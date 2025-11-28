@@ -1,0 +1,876 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>影像生境分析互动实验室</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- 引入 ECharts 用于高级聚类可视化 -->
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <!-- 引入 Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        body { 
+            font-family: 'Noto Sans SC', sans-serif; 
+            background-color: #0b0f19; /* 深空灰背景 */
+            color: #e2e8f0;
+            overflow-x: hidden;
+        }
+        .font-mono { font-family: 'JetBrains Mono', monospace; }
+        
+        /* 交互控件样式 */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 14px;
+            width: 14px;
+            border-radius: 50%;
+            background: #38bdf8;
+            cursor: pointer;
+            margin-top: -5px;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+            border: 2px solid #0f172a;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: #334155;
+            border-radius: 2px;
+        }
+
+        /* 滚动条隐藏 */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* 导航激活态 */
+        .nav-btn.active {
+            color: #38bdf8;
+            border-bottom: 2px solid #38bdf8;
+            background: linear-gradient(to top, rgba(56, 189, 248, 0.1), transparent);
+        }
+        
+        /* Canvas 容器 */
+        .canvas-wrapper {
+            background-image: 
+                linear-gradient(rgba(30, 41, 59, 0.5) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(30, 41, 59, 0.5) 1px, transparent 1px);
+            background-size: 20px 20px;
+        }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen">
+
+    <!-- 顶部导航 -->
+    <header class="bg-slate-900/90 backdrop-blur-md border-b border-slate-800 sticky top-0 z-50">
+        <div class="container mx-auto px-4 h-16 flex justify-between items-center">
+            <div class="flex items-center gap-3">
+                <!-- Habitat Lab Icon (SVG) -->
+                <div class="w-10 h-10 flex items-center justify-center">
+                    <img src="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNTEyIDUxMiIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiBmaWxsPSIjMzhiZGY4IiB0cmFuc2Zvcm09Im1hdHJpeCgxLCAwLCAwLCAxLCAwLCAwKSIgc3Ryb2tlPSJub25lIj48cGF0aCBkPSJNMjg3LjQ3IDE3Ljg3NWMtMS42MjIuMDE4LTMuMjM2LjA3LTQuODQ1LjEyNS0xNS40NDYuNTM2LTMwLjMyMyAyLjgzMy00My45MzggNy4wOTQtMjYuNDEgOC4yNjUtNDguMDcgMjMuMjQtNjEuNDM3IDQ3LjUgMTEuNDkgNjkuMDg2IDQ2LjQ1IDEyMC4xOTQgOTYuMTU2IDEzOS42ODcgNTAuMDE2IDE5LjYxNSAxMTcuMDk2IDguMzY3IDE5NS40MzgtNTMuOTM2bDMuMDk0LTIuNDM4YzEuOTAyLTcuMjY3IDIuNTctMTQuMzM1IDIuMTg3LTIxLjIyLS40Mi4xNjUtLjgyNS4zNS0xLjI1LjUtMTIuODg1IDQuNTYtMjggMy4xODctNDIuMzQ0LTQuMDMtMjguNjktMTQuNDMzLTQ2LjExLTQ2LjgzLTM4LjQwNS03NS43NSAxLjEzNi00LjI2NCAyLjg0Mi04LjE5IDUtMTEuNzUtMTEuMjg2LTUuNjYzLTIzLjMzOC0xMC41NS0zNS44MTMtMTQuNDY4LTI0LjAzMi03LjU1LTQ5LjUzNy0xMS41NzctNzMuODQzLTExLjMxM3pNMTQwLjU2IDIzLjkzOGMtMjAuOTg0LjM5LTQxLjE2IDkuNzM2LTU2LjEyNSAyNC44NzVDNjUuNDggNjcuOTkgNTQuNTI4IDk1Ljg1IDYxLjEyNiAxMjYuNzJjMTUuMzMyLTE1LjQzMiAzNS4yLTI2LjYyIDU4LjA5NC0zMS41NjRsNC43NS0zLjI4IDM1LjEyNC0yNC40MDdjNi4yNjYtMTIuMTc4IDE0LjI5LTIyLjY0IDIzLjY1Ni0zMS40NC0xMy45MTYtOC43MzQtMjguMjc3LTEyLjM1LTQyLjE4OC0xMi4wOTN6bTI5NC4xMjUgMTcuNzE4Yy0zLjM2Ni4wMzUtNi40OTQuNjEtOS4yOCAxLjU5NC03LjQzMiAyLjYyLTEyLjgxNyA3Ljk1LTE1LjIyIDE2Ljk3LTQuODEgMTguMDU1IDcuNzMzIDQzLjY3NiAyOC43NSA1NC4yNSAxMC41MSA1LjI4NSAyMC4zMSA1LjcxNCAyNy43MiAzLjA5MyA3LjQxLTIuNjIyIDEyLjc4LTcuOTcgMTUuMTg3LTE3IDQuODEtMTguMDU3LTcuNzI1LTQzLjY1OC0yOC43Mi01NC4yMi01LjIzLTIuNjMtMTAuMzA2LTQuMDg3LTE1LTQuNTMtMS4xNzItLjExLTIuMzE0LS4xNjgtMy40MzctLjE1N3pNMzAzLjg0NSA1NS43NWMxOS4wMjMtLjAyMyAzNi40MzggMTEuMDMgNDAuMzQ0IDI5LjE4OCA0LjYwNiAyMS40MjItMTEuOTkgNDEuNTYyLTM0LjY1NyA0Ni40MzctMjIuNjY2IDQuODc1LTQ2LjA4LTYuNjctNTAuNjg2LTI4LjA5NC00LjYwNy0yMS40MiAxMS45OS00MS41NjIgMzQuNjU2LTQ2LjQzNiAyLjgzMy0uNjEgNS42OC0uOTUzIDguNS0xLjA2My42MTctLjAyMyAxLjIzLS4wMyAxLjg0NC0uMDN6bTEuMDYyIDE4LjY1NmMtLjcyNy0uMDItMS40Ny0uMDA0LTIuMjIuMDMtMS43MDguMDgyLTMuNDUuMzAyLTUuMjQ4LjY5LTE0LjM4OCAzLjA5My0yMi40MTcgMTQuNTgtMjAuMzQ0IDI0LjIxOCAyLjA3MiA5LjYzOCAxNC4xMTMgMTYuODQ0IDI4LjUgMTMuNzUgMTQuMzg3LTMuMDk0IDIyLjM4NS0xNC42MTIgMjAuMzEyLTI0LjI1LTEuNy03LjkwNi0xMC4wOTQtMTQuMTU0LTIxLTE0LjQzOHptLTE0My41OTQgMTQuMjhsLTE5LjYyNSAxMy42MjZjMjQuMzM3IDQzLjkzMyAyNi4yNCA5MC43MyA5Ljk3IDEyNS41LTE2LjExIDM0LjQyMy01MS41MTIgNTYuMTE3LTk1Ljg3NiA0OC45MDdsLTIuODc0IDEyLjc4YzM4LjUyIDcuODI0IDU4LjUwNiAyOC44NyA2NC4zMTMgNTMuMjUgNS44MSAyNC4zOTQtLjQ3IDUwLjA4NS03LjI1IDcwLjg0NGwxMS42NTUgMTIuNTNjMTcuMjU2LTc2LjIzIDY5Ljk2OC0xMTIuMzM0IDExOS43Mi0xMDcuOTY4IDUxLjA5MyA0LjQ4NCA5Ni4yNDMgNTEuNTMgOTQuNzE4IDEyOC4yMmwxMi42NTYtMmMtMi4yMTUtNjQuMDU1IDUuMDMyLTExMy4yNTYgMjQuNjI0LTE1Mi42ODggMTkuNjE0LTM5LjQ4IDUxLjU2LTY4LjUzIDk1LjgxMi05Mi43ODJsLTEuODc1LTE1Ljg3NWMtNzYuNDM4IDU2LjIzOC0xNDYuMjA1IDY4LjAyMy0yMDAuNjg2IDQ2LjY1Ny01My44MzQtMjEuMTEtOTAuODU2LTczLjUyNy0xMDUuMjgtMTQxem0tMzUuMTg3IDI0LjAzM2MtMzAuODIgNS41NzItNTQuNjQ4IDI0LjE0Ny02OC4xODggNDkuMzc0LTE0LjM0IDI2LjcyLTE3LjA1NCA2MC45NjMtMi4zNDMgOTUuNjI1IDM5LjA4NCA3Ljk2IDY1LjY0LTguOTMgNzkuMTU2LTM3LjgxNCAxMy4xMTYtMjguMDI4IDEyLjQxMi02OC4yNy04LjYyNS0xMDcuMTg3ek00NzMuMjggMjE3Ljg3NGMtMzkuNDI4IDIyLjM3LTY2LjE3IDQ3Ljg3Ny04My4xODYgODIuMTI1LTE4LjI4MyAzNi43OTctMjUuNDMgODQuNTEtMjIuNTMgMTUwLjEyNSAxNS4xOS0uNDYgMzAuMDU4LTQuNzgyIDQ0LjE1NS0xMi4yNSAyMy42NzUtMTIuNTQzIDQ0Ljg2LTM0LjEyNCA1OS43MTctNjAuNTMgMjYuMTQtNDYuNDYgMzIuNzY1LTEwNi44NiAxLjg0NC0xNTkuNDd6bS0yNjcuMzc0IDguNTk0YzkuMTUzLS4wNTUgMTcuNjU1IDIuMjk2IDI0LjU5NCA2LjkwNSA5LjI1MiA2LjE0NiAxNS40MDYgMTYuNzEgMTUuNDA2IDI4LjYyNSAwIDIzLjgwMy0yMC44MSA0My43OC00Ni4wOTQgNDguMjUtMTIuNjM0IDIuMjM0LTI0LjY4NC4wODYtMzMuOTM3LTYuMDYzLTkuMjUzLTYuMTQ4LTE1LjM3NS0xNi43MDQtMTUuMzc1LTI4LjYyNSAwLTIzLjg0IDIwLjc5OC00My43ODIgNDYuMDYzLTQ4LjI1IDMuMTU4LS41NTggNi4yOTItLjgyNSA5LjM0My0uODQzem0uMDYzIDE4LjY4NmMtMS45NS4wMS00LjAwNy4xODItNi4xNTcuNTYzLTE3LjIxIDMuMDQyLTMwLjYyNSAxNy45My0zMC42MjUgMjkuODQzIDAgNS45NTYgMi40MTggOS45OTcgNy4wMyAxMy4wNjIgNC42MTMgMy4wNjUgMTEuNzQyIDQuNzQgMjAuMzQ1IDMuMjIgMTcuMTg4LTMuMDQgMzAuNjI1LTE4LjAxIDMwLjYyNS0yOS44NDUgMC01Ljk0Ny0yLjQyLTkuOTk4LTcuMDMyLTEzLjA2My0zLjQ2LTIuMjk4LTguMzM4LTMuODEtMTQuMTg3LTMuNzh6TTQwLjAzIDMwNi4wOTRjLTYuMDggNC44ODItMTAuODAzIDExLjEyLTE0LjMxIDE4LjIyLTcuMDI2IDE0LjIxLTguNjEgMzIuMDAyLTQuNDQgNDcuNjg2IDQuMTcgMTUuNjg0IDEzLjcgMjkgMjguNzgyIDM2LjEyNSAxMC4zOSA0LjkwOCAyMy44MSA3LjAzMiA0MC43NSA0LjE4OCA2Ljg5NC0yMC4yOTYgMTIuODg2LTQ1LjYyOCA4LjIyLTY1LjIyLTQuNzE4LTE5LjgtMTguMDY1LTM1LjY0My01OC42MjYtNDAuOTM3bC0uMzQzLS4wNjJoLS4wMzJ6TTIzMS41OTUgMzM2LjVjLTQwLjAyNi43LTgyLjUzNyAzMi40NC05NC4yNSAxMDYuNDA2IDExLjgwMiAxOS45MjcgMzQuNjc4IDM3LjExNSA2Mi40MDYgNDUuMjIgMzcuMzA3IDEwLjkwMyA4MS41NyA1Ljc5MiAxMTcuMDYzLTI5LjUzMmwuMTU2LTEuOTdjNi4wOC03Ni4zNDctMzQuMjQtMTE2LjA2OC03Ny4yNS0xMTkuODQzLTIuNjktLjIzNS01LjQwNS0uMzI4LTguMTI2LS4yOHoiPjwvcGF0aD48L3N2Zz4=" alt="Habitat Lab">
+                </div>
+                <div class="flex flex-col">
+                    <h1 class="text-lg font-bold tracking-wide text-slate-100 leading-none">Habitat<span class="text-cyan-400 font-light">Lab</span></h1>
+                    <span class="text-[10px] text-slate-500 font-normal font-mono mt-0.5">Xiaolei Zhu, zxl1412@gmail.com</span>
+                </div>
+            </div>
+            <nav class="flex h-full">
+                <button onclick="switchModule('segmentation')" id="nav-seg" class="nav-btn active px-6 h-full text-sm font-medium text-slate-400 hover:text-slate-200 transition-all">
+                    🔬 超像素分割
+                </button>
+                <button onclick="switchModule('clustering')" id="nav-clus" class="nav-btn px-6 h-full text-sm font-medium text-slate-400 hover:text-slate-200 transition-all">
+                    🧬 无监督聚类
+                </button>
+                <button onclick="switchModule('clinical')" id="nav-clin" class="nav-btn px-6 h-full text-sm font-medium text-slate-400 hover:text-slate-200 transition-all">
+                    🏥 临床案例
+                </button>
+            </nav>
+        </div>
+    </header>
+
+    <!-- 模块 1：超像素分割实验室 -->
+    <main id="mod-segmentation" class="flex-grow flex flex-col lg:flex-row h-[calc(100vh-64px)] overflow-hidden">
+        <!-- 左侧控制面板 -->
+        <aside class="w-full lg:w-80 bg-slate-900 border-r border-slate-800 flex flex-col z-10 shadow-xl overflow-y-auto no-scrollbar">
+            <div class="p-5 border-b border-slate-800">
+                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">1. 影像模态</h2>
+                <div class="grid grid-cols-5 gap-2">
+                    <!-- Pathology Icon (Pink Fill) -->
+                    <button onclick="setSegImage('pathology')" class="img-btn group active relative aspect-square rounded-lg bg-slate-800 border border-slate-700 hover:border-pink-500 transition overflow-hidden ring-2 ring-pink-500 p-2" title="病理切片">
+                        <img src="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSItMC41IDAgNjQgNjQiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIGFyaWEtaGlkZGVuPSJ0cnVlIiByb2xlPSJpbWciIGNsYXNzPSJpY29uaWZ5IGljb25pZnktLW1lZGljYWwtaWNvbiIgcHJlc2VydmVBc3BlY3RSYXRpbz0ieE1pZFlNaWQgbWVldCIgZmlsbD0iI2Y0NzJiNiI+PGcgaWQ9IlNWR1JlcG9fYmdDYXJyaWVyIiBzdHJva2Utd2lkdGg9IjAiPjwvZz48ZyBpZD0iU1ZHUmVwb190cmFjZXJDYXJyaWVyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjwvZz48ZyBpZD0iU1ZHUmVwb19pY29uQ2FycmllciI+PHBhdGggZD0iTTM4LjU3NSA1Mi45NjVsLTE0LjUzMy04LjM5MWwxLjQ0LTIuNDkxbDE0LjUzMSA4LjM4OHoiPjwvcGF0aD48cGF0aCBkPSJNNTMuNDA2IDU3Ljc0NGM0LjIwMi0zLjk2MiA2Ljg1OS05LjUzNCA2Ljg1OS0xNS43NDhjMC03LjY2Mi00LjAyMS0xNC41NjctMTAuMjc3LTE4LjQ0OGw3LjAwNS0xMi4xMzNsLTEuMTAxLS42MzhsMS43MzMtMy4wMDFsLTQuNTMtMi42MTZsLTEuNzMyIDIuOTk4bC0xLjE2My0uNjY5bC0xNy4yMjcgMjkuODQ0bDEuNTA4Ljg3MWwtMi4xMzcgMy42OTlsMy43OCAyLjE4MWwyLjEzNy0zLjY5NWwxLjUwNC44N2w3LjI0My0xMi41NUExNS43NDggMTUuNzQ4IDAgMCAxIDU0LjMgNDEuOTk2YzAgOC42ODYtNy4wNjcgMTUuNzQ4LTE1Ljc1MyAxNS43NDhIMjUuODUydjUuOTYzaDM1LjczM3YtNS45NjNsLTguMTc5LS4wMDF6Ij48L3BhdGg+PHBhdGggZD0iTTE2LjI3IDEuMTU1Yy04LjA1NiAwLTE0LjYxMSA2LjU1Ni0xNC42MTEgMTQuNjA5YzAgOC4wNTcgNi41NTYgMTQuNjExIDE0LjYxMSAxNC42MTFjOC4wNTMgMCAxNC42MDctNi41NTQgMTQuNjA3LTE0LjYxMWMwLTguMDUzLTYuNTUzLTE0LjYwOS0xNC42MDctMTQuNjA5em0wIDI3Ljg2N2MtNy4zMSAwLTEzLjI2MS01Ljk0OC0xMy4yNjEtMTMuMjU4YzAtNy4zMDggNS45NTEtMTMuMjU4IDEzLjI2MS0xMy4yNThjNy4zMDYgMCAxMy4yNTYgNS45NTEgMTMuMjU2IDEzLjI1OGMwIDcuMzEtNS45NSAxMy4yNTgtMTMuMjU2IDEzLjI1OHoiPjwvcGF0aD48cGF0aCBkPSJNOC43MDcgMTQuODAyaDIuODA1di0yLjg0NUg4LjcwN3YyLjg0NXoiPjwvcGF0aD48cGF0aCBkPSJNMTYuMjgyIDQuMjdjLTYuMzQxIDAtMTEuNDk5IDUuMTYxLTExLjQ5OSAxMS41MDNjMCA2LjM0IDUuMTU4IDExLjQ5NSAxMS40OTkgMTEuNDk1YzYuMzM4IDAgMTEuNDk1LTUuMTU1IDExLjQ5NS0xMS40OTVjMC02LjM0Mi01LjE1Ny0xMS41MDMtMTEuNDk1LTExLjUwM3pNNy43MiAxNS44MDF2LTQuODRoNC44MDV2NC44NEg3Ljcyem00Ljk0OSA4Ljg0OGEyLjM4NCAyLjM4NCAwIDAgMSAwLTQuNzY5YTIuMzgzIDIuMzgzIDAgMCAxIDIuMzggMi4zODdhMi4zODEgMi4zODEgMCAwIDEtMi4zOCAyLjM4MmptMi44ODItNS4yOTNhMi4zODQgMi4zODQgMCAxIDEgMC00Ljc2NmEyLjM4MyAyLjM4MyAwIDAgMSAwIDQuNzY2em0xLjY3LTkuMDI0YTIuNTEzIDIuNTEzIDAgMCAxLTIuNTA4LTIuNTExYTIuNTA2IDIuNTA2IDAgMCAxIDIuNTA4LTIuNTA5YTIuNTExIDIuNTExIDAgMCAxIDAgNS4wMnptNC4xNjEgMTIuNzc5YTIuMzgyIDIuMzgyIDAgMSAxIDAtNC43NjZhMi4zODIgMi4zODIgMCAwIDEgMi4zOCAyLjM4MmEyLjM4MSAyLjM4MSAwIDAgMS0yLjM4IDIuMzg0em0uNTA1LTcuMDAyYTIuMzg0IDIuMzg0IDAgMSAxIC4wMDQtNC43NjhhMi4zODQgMi4zODQgMCAwIDEtLjAwNCA0Ljc2OHoiPjwvcGF0aD48L2c+PC9zdmc+" class="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" alt="Pathology">
+                    </button>
+                    <!-- Genomics Icon (Green DNA Strand) -->
+                    <button onclick="setSegImage('spatial')" class="img-btn group relative aspect-square rounded-lg bg-slate-800 border border-slate-700 hover:border-green-500 transition overflow-hidden p-2" title="基因组学/空间转录组">
+                         <img src="data:image/svg+xml;base64,PHN2ZyB2aWV3Qm94PSIwIDAgNTEyIDUxMiIgdmVyc2lvbj0iMS4xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiBmaWxsPSIjMjJjNTVlIj48ZyBpZD0iU1ZHUmVwb19iZ0NhcnJpZXIiIHN0cm9rZS13aWR0aD0iMCI+PC9nPjxnIGlkPSJTVkdSZXBvX3RyYWNlckNhcnJpZXIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PC9nPjxnIGlkPSJTVkdSZXBvX2ljb25DYXJyaWVyIj4gPGc+IDxwYXRoIGQ9Ik0xNzMuOCwyNTIuMWw2LjctNi43YzAuMi0wLjIsMC41LTAuMywwLjctMC40YzAuMy0wLjEsMC41LTAuMSwwLjgsMHMwLjUsMC4yLDAuNywwLjRsNi43LDYuNyBjMC40LDAuNCwwLjQsMSwwLDEuNHMtMSwwLjQtMS40LDBsLTYtNmwtNiw2Yy0wLjIsMC4yLTAuNSwwLjMtMC43LDAuM3MtMC41LTAuMS0wLjctMC4zQzE3My40LDI1My4xLDE3My40LDI1Mi41LDE3My44LDI1Mi4xeiI+PC9wYXRoPiA8cGF0aCBkPSJNMTkyLjUsMjMzLjRsNi43LTYuN2MwLjItMC4yLDAuNS0wLjMsMC43LTAuNGMwLjMtMC4xLDAuNS0wLjEsMC44LDBzMC41LDAuMiwwLjcsMC40bDZuNyw2LjcgYzAuNCwwLjQsMC40LDEsMCwxLjRzLTEsMC40LTEuNCwwbC02LTZsLTYsNmMtMC4yLDAuMi0wLjUsMC4zLTAuNywwLjNzLTAuNS0wLjEtMC43LTAuM0MxOTIuMSwyMzQuNCwxOTIuMSwyMzMuOCwxOTIuNSwyMzMuNHoiPjwvcGF0aD4gPHBhdGggZD0iTTE4NS4zLDI3OC4zbDYtNmwsNiw2YzAuMiwwLjIsMC41LDAuMywwLjcsMC4zczAuNS0wLjEsMC43LTAuM2MwLjQtMC40LDAuNC0xLDAtMS40bC02LjctNi43IGMtMC40LTAuNC0xLTAuNC0xLjQsMGwtNi43LDYuN2MtMC40LDAuNC0wLjQsMSwwLDEuNEMxODQuMywyNzguNywxODQuOSwyNzguNywxODUuMywyNzguM3oiPjwvcGF0aD4gPHBhdGggZD0iTTE2Ni43LDI1OS42bDYtNmwsNiw2YzAuMiwwLjIsMC41LDAuMywwLjcsMC4zczAuNS0wLjEsMC43LTAuM2MwLjQtMC40LDAuNC0xLDAtMS40bC02LjctNi43IGMtMC40LTAuNC0xLTAuNC0xLjQsMGwtNi43LDYuN2MtMC40LDAuNC0wLjQsMSwwLDEuNEMxNjUuNywyNjAsMTY2LjMsMjYwLDE2Ni43LDI1OS42eiI+PC9wYXRoPiA8cGF0aCBkPSJNMjI5LjEsMjM2LjRjLTYuMi03LjUtMTMuNi0xMy44LTIxLjktMTguN2MtMi4zLTEuNC0yLjgtNC4zLTEuMy02LjVjMS4xLTEuNiwyLjgtMi40LDQuNS0yLjQgYzEuMSwwLDIuMiwwLjMsMy4yLDAuOWMyMy4yLDEzLjcsMzcuMywzNy4xLDM3LjMsNjJjMCwyNC4zLTEzLjYsNDcuMy0zNS45LDYxYy04LjksNS41LTE4LjcsOC40LTI4LjgsOC40IGMtMTcuMSwwLTMzLjMtOC4yLTQzLjYtMjIuM2MtMS42LTIuMi0xLTUuMywxLjMtNi45YzIuMi0xLjYsNS4zLTEsNi45LDEuM2M4LjEsMTEuMSwyMC44LDE3LjUsMzQuMywxNy41IGM3LjksMCwxNS42LTIuMywyMi42LTYuNmMxNy41LTEwLjcsMjguMi0yOC44LDI4LjItNDcuOUMyMzYsMjYwLjYsMjMzLjUsMjQ4LDIyOS4xLDIzNi40eiI+PC9wYXRoPiA8cGF0aCBkPSJNMTUyLjksMjc1LjZjNi4yLDcuNSwxMy42LDEzLjgsMjEuOSwxOC43YzIuMywxLjQsMi44LDQuMywxLjMsNi41Yy0xLjEsMS42LTIuOCwyLjQtNC41LDIuNCBjLTEuMSwwLTIuMi0wLjMtMy4yLTAuOWMtMjMuMi0xMy43LTM3LjMtMzcuMS0zNy4zLTYyYzAtMjQuMywxMy42LTQ3LjMsMzUuOS02MWM4LjktNS41LDE4LjctOC40LDI4LjgtOC40IGMxNy4xLDAsMzMuMyw4LjIsNDMuNiwyMi4zYzEuNiwyLjIsMSw1LjMtMS4zLDYuOWMtMi4yLDEuNi01LjMsMS02LjksLTEuM2MtOC4xLTExLjEtMjAuOC0xNy41LTM0LjMtMTcuNSBjLTcuOSwwLTE1LjYsMi4zLTIyLjYsNi42Yy0xNy41LDEwLjctMjguMiwyOC44LTI4LjItNDcuOUMxNDYsMjUxLjQsMTQ4LjUsMjY0LDE1Mi45LDI3NS42eiI+PC9wYXRoPiA8L2c+IDwvZz48L3N2Zz4=" class="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" alt="Genomics">
+                    </button>
+                    <!-- MRI Icon (Multi-color) -->
+                    <button onclick="setSegImage('mri')" class="img-btn group relative aspect-square rounded-lg bg-slate-800 border border-slate-700 hover:border-indigo-500 transition overflow-hidden p-2" title="脑部 MRI">
+                         <img src="data:image/svg+xml;base64,PHN2ZyB2ZXJzaW9uPSIxLjEiIGlkPSJDYXBhXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZpZXdCb3g9IjAgMCA0NjAgNDYwIiB4bWw6c3BhY2U9InByZXNlcnZlIiBmaWxsPSIjRkZGRkZGIj48ZyBpZD0iU1ZHUmVwb19iZ0NhcnJpZXIiIHN0cm9rZS13aWR0aD0iMCI+PC9nPjxnIGlkPSJTVkdSZXBvX3RyYWNlckNhcnJpZXIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCI+PC9nPjxnIGlkPSJTVkdSZXBvX2ljb25DYXJyaWVyIj4gPGc+IDxwYXRoIHN0eWxlPSJmaWxsOiNCN0Q2Q0E7IiBkPSJNMzAuNTU5LDI0NWg3MC4zMDhjMS40MSwxMi4yNjgsNC41MjIsMjQuMDE1LDkuMTA0LDM1aDMzLjQxMUMxMzQuODczLDI2NS4yOTEsMTMwLDI0OC4yMTUsMTMwLDIzMCBjMC01NS4yMjksNDQuNzcxLTEwMCwxMDAtMTAwdi0zMGMtNjYuNzIzLDAtMTIxLjY5NSw1MC4yNy0xMjkuMTM0LDExNUgzMC41NTlDMzguMjMsMTExLjU1LDEyNC41ODksMzAsMjMwLDMwVjAgQzEwMi45NzUsMCwwLDEwMi45NzUsMCwyMzBzMCwyMzAsMCwyMzBoMjMwdi0zMEMxMjQuNTg5LDQzMCwzOC4yMywzNDguNDUsMzAuNTU5LDI0NXoiPjwvcGF0aD4gPHBhdGggc3R5bGU9ImZpbGw6Izk2QjVBNTsiIGQ9Ik0yMzAsMHYzMGMxMDUuNDExLDAsMTkxLjc3LDgxLjU1LDE5OS40NDEsMTg1aC03MC4zMDhDMzUxLjY5NSwxNTAuMjcsMjk2LjcyMywxMDAsMjMwLDEwMHYzMCBjNTUuMjI5LDAsMTAwLDQ0Ljc3MSwxMDAsMTAwYzAsMTguMjE1LTQuODczLDM1LjI5MS0xMy4zODEsNTBoMzMuNDExYzQuNTgxLTEwLjk4NSw3LjY5NC0yMi43MzIsOS4xMDQtMzVoNzAuMzA4IEM0MjEuNzcsMzQ4LjQ1LDMzNS40MTEsNDMwLDIzMCw0MzB2MzBoMjMwYzAsMCwwLTEwMi45NzUsMC0yMzBTMzU3LjAyNSwwLDIzMCwweiI+PC9wYXRoPiA8cGF0aCBzdHlsZT0iZmlsbDojQjdENkNBOyIgZD0iTTI1NSw1MHYzMGgtMjV2MjBjNjYuNzIzLDAsMTIxLjY5NSw1MC4yNywxMjkuMTM0LDExNWg3MC4zMDhCNDIxLjc3LDExMS41NSwzMzUuNDExLDMwLDIzMCwzMHYyMCBIMjU1eiI+PC9wYXRoPiA8cGF0aCBzdHlsZT0iZmlsbDojQjdENkNBOyIgZD0iTTM2MCwzMTBjMCwyNy41LTIyLjUsNTAtNTAsNTBsLTEwLDMwaC03MHY0MGMxMDUuNDExLDAsMTkxLjc3LDgxLjU1LDE5OS40NDEsMTg1aC03MC4zMDggYy0xLjQxLDEyLjI2OC00LjUyMiwyNC4wMTUtOS4xMDQsMzVIMzYwVjMxMHoiPjwvcGF0aD4gPHBhdGggc3R5bGU9ImZpbGw6I0M3RkZFOTsiIGQ9Ik0xNjAsMzkwbC0xMC0zMGMtMjcuNSwwLTUwLTIyLjUtNTAtNTB2LTMwaDkuOTdjLTQuNTgxLTEwLjk4NS03LjY5NC0yMi43MzItOS4xMDQtMzVIMzAuNTU5IEMzOC4yMywzNDguNDUsMTI0LjU4OSw0MzAsMjMwLDQzMHYtNDBIMTYweiI+PC9wYXRoPiA8cGF0aCBzdHlsZT0iZmlsbDojMDc4MDZEOyIgZD0iTTMxNi42MTksMjgwQzMyNS4xMjcsMjY1LjI5MSwzMzAsMjQ4LjIxNSwzMzAsMjMwYzAtNTUuMjI5LTQ0Ljc3MS0xMDAtMTAwLTEwMHYxNTBIMzE2LjYxOXoiPjwvcGF0aD4gPHBhdGggc3R5bGU9ImZpbGw6IzQyOTY4QTsiIGQ9Ik0xMzAsMjMwYzAsMTguMjE1LDQuODczLDM1LjI5MSwxMy4zODEsNTBIMjMwVjEzMEMxNzQuNzcxLDEzMCwxMzAsMTc0Ljc3MSwxMzAsMjMweiI+PC9wYXRoPiA8cGF0aCBzdHlsZT0iZmlsbDojQjdENkNBOyIgZD0iTTE1MCwzNjBoODB2LTUwSDEwMEMxMDAsMzM3LjUsMTIyLjUsMzYwLDE1MCwzNjB6Ij48L3BhdGg+IDxwYXRoIHN0eWxlPSJmaWxsOiM5NkI1QTU7IiBkPSJNMzEwLDM2MGMyNy41LDAsNTAtMjIuNSw1MC01MEgyMzB2NTBIMzEweiI+PC9wYXRoPiA8cG9seWdvbiBzdHlsZT0iZmlsbDojRkZGRkZGOyIgcG9pbnRzPSIxNTAsMzYwIDE2MCwzOTAgMjMwLDM5MCAyMzAsMzYwICI+PC9wb2x5Z29uPiA8cG9seWdvbiBzdHlsZT0iZmlsbDojQzdGRkU5OyIgcG9pbnRzPSIyMzAsMzkwIDMwMCwzOTAgMzEwLDM2MCAyMzAsMzYwICI+PC9wb2x5Z29uPiA8cmVjdCB4PSIxMDAiIHk9IjI4MCIgc3R5bGU9ImZpbGw6I0ZGRkZGRTsiIHdpZHRoPSIxMzAiIGhlaWdodD0iMzAiPjwvcmVjdD4gPHJlY3QgeD0iMjMwIiB5PSIyODAiIHN0eWxlPSJmaWxsOiNDN0ZGRTk7IiB3aWR0aD0iMTMwIiBoZWlnaHQ9IjMwIj48L3JlY3Q+IDxyZWN0IHg9IjIzMCIgeT0iNTAiIHN0eWxlPSJmaWxsOiMwNzgwNkQ7IiB3aWR0aD0iMjUiIGhlaWdodD0iMzAiPjwvcmVjdD4gPHJlY3QgeD0iMjA1IiB5PSI1MCIgc3R5bGU9ImZpbGw6IzQyOTY4QTsiIHdpZHRoPSIyNSIgaGVpZ2h0PSIzMCI+PC9yZWN0PiA8cGF0aCBzdHlsZT0iZmlsbDojQzdGRkU5OyIgZD0iTTMwLjU1OSwyMTVoNzAuMzA4YzcuNDM4LTY0LjczLDYyLjQxMS0xMTUsMTI5LjEzNC0xMTVWODBoLTI1VjUwaDI1VjMwIEMxMjQuNTg5LDMwLDM4LjIzLDExMS41NSwzMC41NTksMjE1eiI+PC9wYXRoPiA8L2c+IDwvZz48L3N2Zz4=" class="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" alt="MRI">
+                    </button>
+                    <!-- CT Icon (Cyan/Blue) -->
+                    <button onclick="setSegImage('ct')" class="img-btn group relative aspect-square rounded-lg bg-slate-800 border border-slate-700 hover:border-blue-500 transition overflow-hidden p-2" title="胸/腹 CT">
+                         <img src="data:image/svg+xml;base64,PHN2ZyBoZWlnaHQ9IjIwMHB4IiB3aWR0aD0iMjAwcHgiIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHZpZXdCb3g9IjAgMCA1MTIuMDAzIDUxMi4wMDMiIHhtbDpzcGFjZT0icHJlc2VydmUiIGZpbGw9IiNGRkZGRkYiPjxnIGlkPSJTVkdSZXBvX2JnQ2FycmllciIgc3Ryb2tlLXdpZHRoPSIwIj48L2c+PGcgaWQ9IlNWR1JlcG9fdHJhY2VyQ2FycmllciIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIj48L2c+PGcgaWQ9IlNWR1JlcG9faWNvbkNhcnJpZXIiPiA8Y2lyY2xlIHN0eWxlPSJmaWxsOiMyMUQwQzM7IiBjeD0iMjU2LjAwMSIgY3k9IjI1NS45OTgiIHI9IjI1NS45OTgiPjwvY2lyY2xlPiA8cGF0aCBzdHlsZT0iZmlsbDojMEY3OTg2OyIgZD0iTTQ0Ni40MTgsNDI3LjA4OWMtMC45NDQtNi44NDktMi4xMDQtMTMuODk1LTMuNjItMjAuOTQyYy03LjQwOC0zNC40MjYtMTcuOTkyLTUzLjMwNC0xNy45OTItNTguODU5IGMwLTUuNTUyLTMuMTc1LTE4Ljg3OC04LjQ2Ni0zNy43NTZzLTEuMDU4LTI5Ljk4Ni02LjM1LTkxLjA2NHMtMTMuNzU4LTY1LjUxOS0yOC41NzctNzEuMDczYy0xNC44MTktNS41NTItMjYuNDYsMC00My4zOTMtMi4yMjEgYy0xNi45MzYtMi4yMjEtNDMuMzkzLTUuNTUyLTQ5Ljc0NS0xMS4xMDZjLTQuNzM2LTQuMTM5LTQuNzYzLTI0LjMyMS00LjQ2OS0zNC4zMjdjNi40MTMtNC45MjMsMTEuMzY4LTEwLjE3MSwxMS44OC0xMi4zMTQgYzEuMDU4LTQuNDQsMy4xNzUtMjUuNTQzLDMuMTc1LTI1LjU0M2w5LjUyNS0xNC40MzVjMCwwLDcuNDA4LTE2LjY1NywzLjE3NS0xOC44ODJjLTQuMjM0LTIuMjE4LTkuMDkzLDguNjUyLTkuMDkzLDguNjUyIHM1LjkxNy0yNC4xOTYsNC44NTktMzEuOTdsLTAuMDE1LTAuMTA2QzI5MC43MzQsMS43NzMsMjczLjU3NiwwLDI1Ni4wMDQsMGMtMTQuODQ1LDAtMjkuMzg4LDEuMjc4LTQzLjU0MSwzLjcwNCBjLTAuMTMzLDAuNS0wLjI2NCwxLjAxNC0wLjM5LDEuNTQ2Yy0yLjExOSw4Ljg4NCwyLjExNywyOS45ODYsMi4xMTcsMjkuOTg2cy03LjQwOC01LjU1Mi04LjQ2NiwwIGMtMS4wNjEsNS41NTIsNS4yOTIsMTguODc4LDkuNTI1LDE5Ljk5MWM1LjI5MiwzLjMyOSw3LjQwOCwxNC40MzUsNy40MDgsMTkuOTg5YzAsNS41NTIsOC40NjYsMjEuMTAxLDguNDY2LDIxLjEwMSBzMS45NDksMS41NjgsNS4wMDUsMy42NDdjMC4yODQsMTAuMDc2LDAuMjI4LDMwLjAwMS00LjQ3NiwzNC4xMTFjLTYuMzUsNS41NTQtMzIuODExLDguODg2LTQ5Ljc0MywxMS4xMDYgYy0xNi45MzYsMi4yMjEtMjguNTc1LTMuMzI5LTQzLjM5NiwyLjIyMWMtMTQuODE3LDUuNTU2LTIzLjI4Myw5Ljk5Ni0yOC41NzcsNzEuMDczYy01LjI5Miw2MS4wNzgtMS4wNTgsNzIuMTg2LTYuMzUsOTEuMDY0IGMtNS4yOTIsMTguODc4LTguNDY2LDMyLjIwNi04LjQ2NiwzNy43NTZjMCw1LjU1NC0xMC41ODMsMjQuNDMyLTE3Ljk5Miw1OC44NTljLTIuMDczLDkuNjI4LTMuNDgxLDE5LjI1OS00LjU3NSwyOC4zNzZjMTAuNTEyLDEwLjgwMiwyMS45NjcsMjAuNjc5LDM0LjIzNywyOS40OThjMS4xODItNC4xMTIsMi44NTUtOC41MDYsNS4yNjUtMTMuMTc0YzEwLjMyMS0xOS45OTEsMTguMjU4LTY0LjEzMiwyMy44MTQtODEuNjIzIGM1LjU1Ni0xNy40OTEsMTUuMDgxLTM3LjQ4LDE1LjA4MS00MS42NDVjMC00LjE2MywyLjM4MS02OS45NjIsOS41MjUtODMuMjg4YzcuMTQ2LTEzLjMyNiwxMS4xMTQtMTEuNjYzLDExLjExNC0xMS42NjMgczMuOTY4LDE5LjE1NywxLjU4OCwzOS4xNDdjLTIuMzgxLDE5Ljk4OS0zLjE3NSwyMS42NTYsMi4zODEsNDkuMTRjNS41NTYsMjcuNDg1LDE0LjI4NywzOC4zMTQsMTMuNDk0LDUzLjMwNiBjLTAuNzkzLDE0Ljk5My00Ljc2MSw4LjMzLTEzLjQ5NCwyOC4zMThjLTguNDI5LDE5LjI5Mi0yMC4zMDIsMjcuNDcyLTIwLjE2OSw4OC45MTVjMzAuODg1LDEzLjIyLDY0Ljg5NSwyMC41NDMsMTAwLjYxNiwyMC41NDMgYzM4LjgwMSwwLDc1LjU3OC04LjY0NSwxMDguNTI2LTI0LjA5N2MtMC4zMjYtNTguMjEyLTExLjkwMi02Ni40NTAtMjAuMTYzLTg1LjM2M2MtOC43MzEtMTkuOTkxLTEyLjctMTMuMzI2LTEzLjQ5NC0yOC4zMThjLTAuNzkzLTE0Ljk5MSw3LjkzOS0yNS44MTgsMTMuNDk0LTUzLjMwNmM1LjU1OC0yNy40ODMsNC43NjUtMjkuMTUsMi4zODMtNDkuMTRjLTIuMzgzLTE5Ljk4OSwxLjU4OC0zOS4xNDcsMS41ODgtMzkuMTQ3IHMzLjk2OC0xLjY2MywxMS4xMTIsMTEuNjYzYzcuMTQxLDEzLjMyNCw5LjUyNSw3OS4xMjMsOS41MjUsODMuMjg4czkuNTI1LDI0LjE1NCwxNS4wODEsNDEuNjQ1IGM1LjU1NiwxNy40OTEsMTMuNDk0LDYxLjYzNCwyMy44MTQsODEuNjIzYzEuNTA4LDIuOTIxLDIuNzI2LDUuNzMzLDMuNzE4LDguNDM3YzEyLjU4My05LjY0MiwyNC4yNDQtMjAuNDIzLDM0LjgyOC0zMi4xOTUgTDQ0Ni40MTgsNDI3LjA4OXoiPjwvcGF0aD4gPHBhdGggc3R5bGU9ImZpbGw6I0VFRjNGNzsiIGQ9Ik0yNS40NjQsMTQ0LjYwMmg0NjEuMDhjMTYuMzAzLDMzLjY3OSwyNS40NDgsNzEuNDcsMjUuNDQ4LDExMS4zOTggYzAsMjUuNTkyLTMuNzczLDUwLjI5OS0xMC43NjIsNzMuNjE1SDEwLjc3NWMtNi45ODktMjMuMzE2LTEwLjc2Mi00OC4wMjItMTAuNzYyLTczLjYxNmMwLTM5LjkyOCw5LjE0Ni03Ny43MTksMjUuNDQ4LTExMS4zOTggTDI1LjQ2NCwxNDQuNjAyTDI1LjQ2NCwxNDQuNjAyeiI+PC9wYXRoPiA8cGF0aCBzdHlsZT0iZmlsbDojMTVCREIyOyIgZD0iTTQyMS42NiwzMjkuNjEyYy0xLjM4LTUuNjgyLTMuMTc3LTEyLjQyNS01LjMyMy0yMC4wOGMtNS4yOTItMTguODc4LTEuMDU4LTI5Ljk4Ni02LjM1LTkxLjA2NCBzLTEzLjc1OC02NS41MTktMjguNTc3LTcxLjA3M2MtMTQuODE5LTUuNTUyLTI2LjQ2LDAtNDMuMzkzLTIuMjIxbC00LjM3LTAuNTczSDE4Ni4yNzhsLTQuMzcsMC41NzMgYy0xNi45MzYsMi4yMjEtMjguNTc1LTMuMzI5LTQzLjM5NiwyLjIyMWMtMTQuODE3LDUuNTU2LTIzLjI4Myw5Ljk5Ni0yOC41NzcsNzEuMDczYy01LjI5Miw2MS4wNzgtMS4wNTgsNzIuMTg2LTYuMzUsOTEuMDY0IGMtMi4xNDYsNy42NTUtMy45NDIsMTQuMzk4LTUuMzIzLDIwLjA4aDUyLjMyN2MwLjIzMi0wLjg2NiwwLjM1Ny0xLjU1NywwLjM1Ny0yLjAzNWMwLTQuMTYzLDIuMzgxLTY5Ljk2Miw5LjUyNS04My4yODggYzcuMTQ2LTEzLjMyNiwxMS4xMTQtMTEuNjYzLDExLjExNC0xMS42NjNzMy45NjgsMTkuMTU3LDEuNTg4LTM5LjE0N2MtMi4zODEsMTkuOTg5LTMuMTc1LDIxLjY1NiwyLjM4MSw0OS4xNCBjMC42MjYsMy4xMDIsMS4yOTYsNS45OSwxLjk4NCw4LjY5OGgxNjQuODRjMC42OS0yLjcwOCwxLjM1Ni01LjU5NiwxLjk4NC04LjY5OGM1LjU1OC0yNy40ODMsNC43NjUtMjkuMTUsMi4zODMtNDkuMTQgYy0yLjM4My0xOS45ODksMS41ODgtMzkuMTQ3LDEuNTg4LTM5LjE0N3MzLjk2OS0xLjY2MywxMS4xMTIsMTEuNjYzYzcuMTQxLDEzLjMyNCw5LjUyNSw3OS4xMjMsOS41MjUsODMuMjg4IGMwLDAuNDc4LDAuMTI2LDEuMTY3LDAuMzU3LDIuMDM1aDUyLjMyN0w0MjEuNjYsMzI5LjYxMkw0MjEuNjYsMzI5LjYxMnoiPjwvcGF0aD4gPHBhdGggc3R5bGU9ImZpbGw6I0ZFRkVGRTsiIGQ9Ik0yNS40NjQsMTQ0LjYwMmg0NjEuMDhjMC43NywxLjU4OCwxLjUyMSwzLjE4NiwyLjI1OCw0Ljc5MkgyMy4yMDYgQzIzLjk0MywxNDcuNzg4LDI0LjY5NCwxNDYuMTg5LDI1LjQ2NCwxNDQuNjAyeiBNNTAyLjYxNSwzMjQuODIzYy0wLjQ0NywxLjYwMy0wLjkwOCwzLjE5OS0xLjM4NCw0Ljc4OUgxMC43NzUgYy0wLjQ3Ni0xLjU5LTAuOTM3LTMuMTg2LTEuMzg0LTQuNzg5aDQ5My4yMjJlNTAyLjYxNXoiPjwvcGF0aD4gPGc+IDxwYXRoIHN0eWxlPSJmaWxsOiNFRUYzRjc7IiBkPSJNMzI1LjkxNCwyNzcuNjQ0YzAuODktMy40NywwLjg5My02LjgsMC42NjYtOS4yODNjMC4xMzMtMC4yODgsMC4yNjYtMC41NzEsMC4zOTctMC44NzEgYzMuNTE0LTguMDg1LDAuMDk3LTIwLjMzNS0wLjQ2My0yMi4yMTFjMS41MjgtNC44OTksMS43NzEtMTAuMjUsMS41NTItMTUuMDc4Yy0wLjMyNC03LjE4MS0yLjU3NS0xMS4wNDQtNC4zNDUtMTMuMDA2IGMwLjg3Ny01LjE4MiwwLjIyMy0xMC40MTgtMS42NDUtMTYuMDYxYy0wLjc4OS0yLjM4My0xLjY0Ny0zLjgyNC0yLjQyNS00LjcwMWMwLjAyOS0xLjY3OC0wLjA3My0zLjU1LTAuMjk3LTUuNzE3IGMtMC41OC01LjU0OS0yLjg1NS05LjIxOC00Ljg2MS0xMS40NDhjMC4zMTktMS4xMzMsMC41MDUtMi4yNTgsMC41MDUtMy4zNmMwLTUuNjI1LTctOS43NjUtMTAuNzUzLTExLjU4NiBjMC4zMjYtMC45MjgsMC40Ny0xLjY2OSwwLjQwMy0yLjEyM2MtMC41NDUtMy44MzgtNC4zNTYtNC4zODUtOC43MTQtMy44MzhjMS4wODksMTguMDk4LTM4LjEyNCwyNy45NjgtMzguMTI0LDI3Ljk2OCBzMi4xODEsNi4wMzIsMS42MzQsNy42NzdjMjIuMjUzLTMuMzYsMzUuMzk3LTE1LjEwNSw0MS4zNTYtMjMuNDc1YzIuODE3LDEuNyw3LjMyOSw0Ljg5OSw2LjU3Myw3LjU3MSBjLTguMTY5LDE4LjY0Ni00OS4wMTgsMjEuOTM2LTQ5LjAxOCwyMS45MzZzMi4xODEsNy42NzcsMCw4LjIyNmM4LjE2OS0wLjU0OSwyNy43NzctMy44MzgsMzguMTI0LTkuODcxIGM2LjIyNC0zLjYyOSwxMS42NDYtOC4yNDgsMTQuOTg5LTEzLjAyNmMwLjkxLDIuMzMyLDEuNjQxLDUuODA0LDAuODA3LDEwLjI4NmMtMS42MzYsOC43NzMtMTkuMDYzLDE5Ljk5My0yMi44NzUsMTkuNzQyIGMtMy44MTMsMC41NDktMjguODY1LDAtMjguODY1LDBsLTAuNTQ1LDcuNjhjMCwwLDIwLjE1MSwyLjc0MywyOC4zMjIsMC41NDljOC4xNjktMi4xOTQsMTcuNDI3LTYuNTgxLDIzLjk2NC0xMi42MTEgYzEuNDIyLTEuMzE0LDIuNi0yLjUyMiwzLjU4MS0zLjcxOGMtMC40MDUsNC43MzItMS40NTUsMTEuMjA1LTQuMTI1LDE2Ljg3OGMtNC45MDEsMTAuNDItMTUuNzk1LDEwLjQyLTI1LjU5OCwxMC45NjkgYy05LjgwMywwLjU0OS0yNi4xNDMtOC43NzUtMjYuMTQzLTguNzc1bDAuNTQ1LDcuMTI4YzAsMCw4LjE2OSwzLjgzOCwxMy4wNyw2LjU4MWM0LjkwMSwyLjc0MywxOC41MTcsNC4zODcsMjkuNDEsMC41NDkgYzguNDEzLTIuOTY1LDE0Ljg2NS0xMC4xNzcsMTguMTIzLTE2LjA5YzYuNjcyLDE1LjExNi01Ljg2NSwyNS41NS0xNC4zMTIsMjkuODAxYy04LjcxNCw0LjM4Ny00NS4yMDMtOS44NzEtNDUuMjAzLTkuODcxIGwtMS42MzQsNS40ODNjMCwwLDEwLjM0OCwzLjI5MiwxNC4xNTksNC45MzRjMy44MTMsMS42NDUsMTUuMjQ5LDkuMzIyLDMzLjc2Nyw2LjAzMmM2LjY0NS0xLjE4MiwxMS4xNjEtMy45MjksMTQuMjI4LTcuNTA5IGM1LjI0OCw5LjQ5OC00LjMyOCwxNi41NDEtMTEuNTA0LDIwLjY3Yy03LjYyNCw0LjM4Ny0yNC41MDctMS4wOTgtMzEuNTg5LTYuNTgxYy03LjA4LTUuNDg1LTE3Ljk3Mi0xMC45NjktMTcuOTcyLTEwLjk2OSBsLTEuNjM2LDguMjI2YzAsMCwyLjkxOSwxLjU5Miw2LjM5NCwzLjQ0MWMxLjc5OSwyLjQ3NCw0LjE3NCw2LjQwMiw3LjA5MywxMC44NzdjMy45NDQsMjAuOTAyLDE4LjY4NiwzNy43OCwzNC45ODQsMzcuNzhjMTYuODgzLDAsMTcuOTcyLTE1LjM1NSwxOS4wNjEtMjIuNDg1YzAuNjczLTQuMzkyLTAuMTA0LTguOTg3LTAuNzk4LTExLjg3M0MzMjYuMTY2LDI4MC43MTEsMzI2LjA1NiwyNzkuMDUzLDMyNS45MTQsMjc3LjY0NCBMMzI1LjkxNCwyNzcuNjQ0TDMyNS45MTQsMjc3LjY0NHogTTMyMy4yMzIsMjg0LjUxMkwzMjMuMjMyLDI4NC41MTJjLTAuNjExLDguMDU0LTYuMDcyLDE1Ljc4OS0xNi40MDYsMTguNjI2IGMtNS42MDUsMS4zNDItMTMuMDMyLTUuNzM5LTE5LjE2LTEzLjMxM2M0LjM4NSw0LjA3NywxMC4wMzgsNi44NzcsMTguMDcxLDcuMjgxQzMxNC4zOTQsMjk3LjU0LDMxOS45NDYsMjkxLjA0OSwzMjMuMjMyLDI4NC41MTJ6IE0zMDYuODI1LDI4Mi4zTDMwNi44MjUsMjgyLjNjNS44NTgtMC41Niw5Ljk5NC0yLjEzNywxMy4xNTQtNC43MTJjLTEuNjQ3LDQuMTI4LTUuMDM2LDkuNDAyLTEyLjA2NSwxMi45NDEgYy04LjM3OSwzLjg2Ny0xOS4yMDgtNi40NTUtMjUuOTEzLTE0LjM3MUMyODguNTAxLDI3OS4wOTUsMjk4LjYzLDI4My4wODgsMzA2LjgyNSwyODIuM3ogTTMwOS4wMDQsMzExLjkxM0wzMDkuMDA0LDMxMS45MTMgYy0xMS4wMjgsMi4yOTctMjIuMzE1LTEyLjUxLTI4LjEyNy0yMS42NjFjNS45NjQsNy41MjcsMTMuMjA5LDE0LjUzNiwyMS41OTIsMTcuMjczYzkuOTU5LDMuMjUzLDE2LjI5NC01LjIwOCwyMC42MzgtMTIuMTg4IEMzMjEuOTM5LDMwMS40MTQsMzE4LjU4NiwzMDkuNTgzLDMwOS4wMDQsMzExLjkxM3oiPjwvcGF0aD4gPHBhdGggc3R5bGU9ImZpbGw6I0VFRjNGNzsiIGQ9Ik0xOTAuMzQxLDI4Mi40OWMtMC42OTUsMi44ODQtMS40NzEsNy40ODEtMC44LDExLjg3M2MxLjA4OSw3LjEyOCwyLjE3OSwyMi40ODUsMTkuMDYzLDIyLjQ4NSBjMTYuMjk4LDAsMzEuMDQtMTYuODc2LDM0Ljk4NC0zNy43OGMyLjkxOS00LjQ3Niw1LjI5NC04LjQwNSw3LjA5My0xMC44NzdjMy40NzUtMS44NDksNi4zOTQtMy40NDEsNi4zOTQtMy40NDFsLTEuNjM0LTguMjI2IGMwLDAtMTAuODkyLDUuNDgzLTE3Ljk3MiwxMC45NjljLTcuMDgsNS40ODMtMjMuOTY0LDEwLjk2OS0zMS41ODksNi41ODFjLTcuMTc3LTQuMTMtMTYuNzUtMTEuMTcyLTExLjUwNC0yMC42NyBjMy4wNjcsMy41NzgsNy41ODIsNi4zMjgsMTQuMjI4LDcuNTA5YzE4LjUxNywzLjI5LDI5Ljk1NS00LjM4NywzMy43NjctNi4wMzJjMy44MTMtMS42NDUsMTQuMTU5LTQuOTM0LDE0LjE1OS00LjkzNGwtMS42MzQtNS40ODMgYzAsMC0zNi40OTAsMTQuMjU5LTQ1LjIwMyw5Ljg3MWMtOC40NDYtNC4yNTEtMjAuOTg0LTE0LjY4NC0xNC4zMTItMjkuODAxYzMuMjU5LDUuOTEzLDkuNzA4LDEzLjEyNywxOC4xMjMsMTYuMDkgYzEwLjg5MiwzLjgzOCwyNC41MDksMi4xOTQsMjkuNDEtMC41NDljNC45MDEtMi43NDMsMTMuMDctNi41ODEsMTMuMDctNi41ODFsMC41NDUtNy4xMjhjMCwwLTE2LjMzOCw5LjMyMi0yNi4xNDMsOC43NzUgYy05LjgwMy0wLjU0OS0yMC42OTQtMC41NDktMjUuNTk4LTEwLjk2OWMtMi42NjgtNS42NzMtMy43MTgtMTIuMTQ2LTQuMTI1LTE2Ljg3OGMwLjk4MSwxLjE5NSwyLjE1OSwyLjQwMywzLjU4MSwzLjcxOCBjNi41MzUsNi4wMzIsMTUuNzk1LDEwLjQyLDIzLjk2NCwxMi42MTFjOC4xNjksMi4xOTQsMjguMzIxLTAuNTQ5LDI4LjMyMS0wLjU0OWwtMC41NDUtNy42OGMwLDAtMjUuMDU0LDAuNTQ5LTI4Ljg2NSwwIGMtMy44MTItMC41NDktMjEuMjM5LTEwLjk2OS0yMi44NzUtMTkuNzQyYy0wLjgzNS00LjQ4LTAuMTA2LTcuOTUyLDAuODA3LTEwLjI4NmMzLjM0NCw0Ljc3OCw4Ljc2NCw5LjQsMTQuOTg5LDEzLjAyNiBjMTAuMzQ4LDYuMDMyLDI5Ljk1NSw5LjMyMiwzOC4xMjQsOS44NzFjLTIuMTgxLTAuNTQ5LDAtOC4yMjYsMC04LjIyNnMtNDAuODQ5LTMuMjkyLTQ5LjAxOC0yMS45MzYgYy0wLjc1OS0yLjY3LDMuNzU1LTUuODY5LDYuNTcyLTcuNTcxYzUuOTYyLDguMzcsMTkuMTA1LDIwLjExNSw0MS4zNTYsMjMuNDc1Yy0wLjU0NS0xLjY0NSwxLjYzNi03LjY3NywxLjYzNi03LjY3NyBzLTM5LjIxMy05Ljg3MS0zOC4xMjQtMjcuOTY4Yy00LjM1Ni0wLjU0OS04LjE2OSwwLTguNzE0LDMuODM4Yy0wLjA2NCwwLjQ1NCwwLjA3NywxLjE5NSwwLjQwMywyLjEyMyBjLTMuNzUzLDEuODE5LTEwLjc1Myw1Ljk2Mi0xMC43NTMsMTEuNTg2YzAsMS4xLDAuMTg2LDIuMjI1LDAuNTAzLDMuMzZjLTIuMDA0LDIuMjMyLTQuMjgsNS44OTgtNC44NTksMTEuNDQ4IGMtMC4yMjgsMi4xNy0wLjMyOCw0LjA0MS0wLjI5OSw1LjcxN2MtMC43NzYsMC44NzctMS42MzYsMi4zMTctMi40MjMsNC43MDFjLTEuODY3LDUuNjQyLTIuNTIyLDEwLjg3OS0xLjY0NywxNi4wNjEgYy0xLjc3MywxLjk2Mi00LjAyMiw1LjgyNi00LjM0NSwxMy4wMDZjLTAuMjE5LDQuODI5LDAuMDI0LDEwLjE3NywxLjU1MiwxNS4wNzhjLTAuNTYsMS44NzgtMy45NzUsMTQuMTI2LTAuNDYzLDIyLjIxMSBjMC4xMywwLjI5NywwLjI2NCwwLjU4MiwwLjM5NywwLjg3MWMtMC4yMywyLjQ4LTAuMjI1LDUuODEsMC42NjYsOS4yODNDMTkwLjQ2MywyNzkuMDUzLDE5MC4zNTIsMjgwLjcxNCwxOTAuMzQxLDI4Mi40OXogTTIxMC43ODIsMjk3LjEwNkwyMTAuNzgyLDI5Ny4xMDZjOC4wMzItMC40MDMsMTMuNjgzLTMuMjA2LDE4LjA3MS03LjI4MWMtNi4xMjUsNy41NzMtMTMuNTU3LDE0LjY1NS0xOS4xNiwxMy4zMTMgYy0xMC4zMzctMi44MzctMTUuNzk1LTEwLjU3Mi0xNi40MDYtMTguNjI2QzE5Ni41NzIsMjkxLjA0OSwyMDIuMTI0LDI5Ny41NDMsMjEwLjc4MiwyOTcuMTA2eiBNMjM0LjUxNiwyNzYuMTU1TDIzNC41MTYsMjc2LjE1NSBjLTYuNzAzLDcuOTEzLTE3LjUzMywxOC4yMzYtMjUuOTExLDE0LjM3MWMtNy4wMjktMy41MzktMTAuNDItOC44MTEtMTIuMDY3LTEyLjk0MWMzLjE2MiwyLjU3NSw3LjI5OCw0LjE1MiwxMy4xNTYsNC43MTIgQzIxNy44ODYsMjgzLjA4NiwyMjguMDE1LDI3OS4wOTEsMjM0LjUxNiwyNzYuMTU1eiBNMTkzLjQxMywyOTUuMzM4TDE5My40MTMsMjk1LjMzOGM0LjM0NSw2Ljk3OCwxMC42NzgsMTUuNDQxLDIwLjYzOCwxMi4xODggYzguMzgzLTIuNzM3LDE1LjYyOC05Ljc0NSwyMS41OTItMTcuMjczYy01LjgxLDkuMTUtMTcuMDk4LDIzLjk1OC0yOC4xMjcsMjEuNjYxQzE5Ny45MzIsMzA5LjU4NiwxOTQuNTgxLDMwMS40MTQsMTkzLjQxMywyOTUuMzM4IHoiPjwvcGF0aD4gPHBhdGggc3R5bGU9ImZpbGw6I0VFRjNGNzsiIGQ9Ik0yNTQuOTA0LDE3MS45NzVjMCwwLTguMTY5LTcuMDgtMTAuMzQ4LTcuMDhzLTYuNTM1LDQuMzU2LTcuMDgsOC4xNjkgYy0wLjU0NSwzLjgxMywyLjE3OSw4LjE2OSw1LjQ0Niw5LjgwM2MzLjI2OCwxLjYzNCw1Ljk5LDIuNzIzLDUuOTksMi43MjNzMC41NDUsNjcuNTM1LDIuMTc5LDcwLjI1NyBjMS42MzQsMi43MjYsOC4xNjksOS4yNTgsOC4xNjksOS4yNThoLTAuMDcxYzAsMCw2LjUzNS02LjUzNSw4LjE2OS05LjI1OGMxLjYzNC0yLjcyMywyLjE3OS03MC4yNTcsMi4xNzktNzAuMjU3IHMyLjcyMy0xLjA4OSw1Ljk5LTIuNzIzYzMuMjY4LTEuNjM2LDUuOTktNS45OSw1LjQ0Ni05LjgwM2MtMC41NDUtMy44MTMtNC45MDEtOC4xNjktNy4wOC04LjE2OWMtMi4xODEsMC0xMC4zNDgsNy4wOC0xMC4zNDgsNy4wOCBzLTMuNDcsMi40NDktOC42NDUsMEgyNTQuOTA0eiI+PC9wYXRoPiA8L2c+IDwvZz48L3N2Zz4=" class="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" alt="CT">
+                    </button>
+                    <!-- Microbiome Icon (Blue/Green) -->
+                    <button onclick="setSegImage('microbiome')" class="img-btn group relative aspect-square rounded-lg bg-slate-800 border border-slate-700 hover:border-yellow-500 transition overflow-hidden p-2" title="微生物菌群">
+                         <img src="data:image/svg+xml;base64,PHN2ZyB2ZXJzaW9uPSIxLjEiIGlkPSJMYXllcl8xIiB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHhtbG5zOnhsaW5rPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5L3hsaW5rIiB2aWV3Qm94PSIwIDAgNDYwIDQ2MCIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSIgZmlsbD0iI0ZGRkZGRiI+PGcgaWQ9IlNWR1JlcG9fYmdDYXJyaWVyIiBzdHJva2Utd2lkdGg9IjAiPjwvZz48ZyBpZD0iU1ZHUmVwb190cmFjZXJDYXJyaWVyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjwvZz48ZyBpZD0iU1ZHUmVwb19pY29uQ2FycmllciI+IDxnIGlkPSJYTUxJRF85MDhfIj4gPHBhdGggaWQ9IlhNTElEXzkwOV8iIHN0eWxlPSJmaWxsOiMxNDZBOEE7IiBkPSJNNDU3LjQ3MSwxOTUuODQyQzQ0MC45Nyw4NS4wMTcsMzQ1LjQxNywwLDIzMCwwQzEwMi45NzQsMCwwLDEwMi45NzUsMCwyMzAgYzAsMTE1LjQxNyw4NS4wMTcsMjEwLjk3MCwxOTUuODQyLDIyNy40NzFMNDU3LjQ3MSwxOTUuODQyeiI+PC9wYXRoPiA8cGF0aCBpZD0iWE1MSURfOTEwXyIgc3R5bGU9ImZpbGw6IzA2Mzg0QTsiIGQ9Ik00NjAsMjMwYzAtMTEuNjA4LTAuODY5LTIzLjAxMi0yLjUyOS0zNC4xNThsLTk2LjY1Ny05Ni42NTZMOTkuMTg1LDM2MC44MTUgbDk2LjY1Niw5Ni42NTdDMjA2Ljk4OCw0NTkuMTMxLDIxOC4zOTIsNDYwLDIzMCw0NjBDMzU3LjAyNSw0NjAsNDYwLDM1Ny4wMjUsNDYwLDIzMHoiPjwvcGF0aD4gPHBhdGggaWQ9IlhNTElEXzkxMV8iIHN0eWxlPSJmaWxsOiNBM0RERTk7IiBkPSJNMjMwLDQ1bC0xMCwxODVsMTAsMTg1YzEwMi4xNzMsMCwxODUtODIuODI3LDE4NS0xODVTMzMyLjE3Myw0NSwyMzAsNDV6Ij48L3BhdGg+IDxwYXRoIGlkPSJYTUxJRF85MTJfIiBzdHlsZT0iZmlsbDojRkZGRkZGOyIgZD0iTTIzMCw0NXYzNzBjLTEwMi4xNzMsMC0xODUtODIuODI3LTE4NS0xODVTMTI3LjgyNyw0NSwyMzAsNDV6Ij48L3BhdGg+IDxwYXRoIGlkPSJYTUxJRF81N18iIHN0eWxlPSJmaWxsOiM2MkIzQ0Q7IiBkPSJNMjMwLDY1bC0xMCwxNjVsMTAsMTY1YzkxLjEyNywwLDE2NS03My44NzMsMTY1LTE2NVMzMjEuMTI3LDY1LDIzMCw2NXoiPjwvcGF0aD4gPHBhdGggaWQ9IlhNTElEXzU2XyIgc3R5bGU9ImZpbGw6IzgyQzhEQjsiIGQ9Ik0yMzAsNjV2MTY1djE2NWMtOTEuMTI3LDAtMTY1LTczLjg3My0xNjUtMTY1UzEzOC44NzMsNjUsMjMwLDY1eiI+PC9wYXRoPiA8cGF0aCBpZD0iWE1MSURfOTEzXyIgc3R5bGU9ImZpbGw6I0EzRERFOTsiIGQ9Ik0xNzcuNTgyLDEwMy40NDVjLTE3LjIzLDcuMTQ1LTM3LjEyOCwxMS4wNC01MC4xMTMsMjQuMDI1IHMtMTYuODgsMzIuODgyLTI0LjAyNSw1MC4xMTNDOTYuNTUyLDE5NC4yMDMsODUsMjEwLjg4Niw4NSwyMzBzMTEuNTUyLDM1Ljc5NywxOC40NDUsNTIuNDE4IGM3LjE0NSwxNy4yMywxMS4wNCwzNy4xMjcsMjQuMDI1LDUwLjExMmMxMi45ODUsMTIuOTg1LDMyLjg4MiwxNi44OCw1MC4xMTMsMjQuMDI1QzE5NC4yMDMsMzYzLjQ0OCwyMTAuODg2LDM3NSwyMzAsMzc1bDEwLTE0NSBMMjMwLDg1QzIxMC44ODYsODUsMTk0LjIwMyw5Ni41NTIsMTc3LjU4MiwxMDMuNDQ1eiI+PC9wYXRoPiA8cGF0aCBpZD0iWE1MSURfOTE0XyIgc3R5bGU9ImZpbGw6IzgyQzhEQjsiIGQ9Ik0zNTYuNTU1LDE3Ny41ODJjLTcuMTQ1LTE3LjIzLTExLjA0LTM3LjEyNy0yNC4wMjUtNTAuMTEyIHMtMzIuODgyLTE2Ljg4LTUwLjExMy0yNC4wMjVDMjY1Ljc5Nyw5Ni41NTIsMjQ5LjExNCw4NSwyMzAsODV2MjkwYzE5LjExNCwwLDM1Ljc5Ny0xMS41NTIsNTIuNDE4LTE4LjQ0NSBjMTcuMjMtNy4xNDUsMzcuMTI4LTExLjA0LDUwLjExMy0yNC4wMjVjMTIuOTg1LTEyLjk4NSwxNi44OC0zMi44ODIsMjQuMDI1LTUwLjExM0MzNjMuNDQ4LDI2NS43OTcsMzc1LDI0OS4xMTQsMzc1LDIzMCBTMzYzLjQ0OCwxOTQuMjAzLDM1Ni41NTUsMTc3LjU4MnoiPjwvcGF0aD4gPHBhdGggaWQ9IlhNTElEXzkxNV8iIHN0eWxlPSJmaWxsOiM2MkIzQ0Q7IiBkPSJNMjAwLDMxNWMwLDE2LjU2OSwxMy40MzEsMzAsMzAsMzBsMTItMzBsLTEyLTMwQzIxMy40MzEsMjg1LDIwMCwyOTguNDMxLDIwMCwzMTV6Ij48L3BhdGg+IDxwYXRoIGlkPSJYTUxJRF85MTZfIiBzdHlsZT0iZmlsbDojNDE5RUJFOyIgZD0iTTIzMCwyODV2NjBjMTYuNTY5LDAsMzAtMTMuNDMxLDMwLTMwUzI0Ni41NjksMjg1LDIzMCwyODV6Ij48L3BhdGg+IDxwYXRoIGlkPSJYTUxJRF85MTdfIiBzdHlsZT0iZmlsbDojNjJCM0NEOyIgZD0iTTIxNSwxNDBjMCw4LjI4NCw2LjcxNiwxNSwxNSwxNWw2LTE1bC02LTE1QzIyMS43MTYsMTI1LDIxNSwxMzEuNzE2LDIxNSwxNDB6Ij48L3BhdGg+IDxwYXRoIGlkPSJYTUxJRF85MThfIiBzdHlsZT0iZmlsbDojNDE5RUJFOyIgZD0iTTIzMCwxMjV2MzBjOC4yODQsMCwxNS02LjcxNiwxNS0xNVMyMzguMjg0LDEyNSwyMzAsMTI1eiI+PC9wYXRoPiA8Y2lyY2xlIGlkPSJYTUxJRF80OV8iIHN0eWxlPSJmaWxsOiM0MTlFQkU7IiBjeD0iMjY1IiBjeT0iMjAwIiByPSIxNSI+PC9jaXJjbGU+IDxjaXJjbGUgaWQ9IlhNTElEXzQ4XyIgc3R5bGU9ImZpbGw6IzQxOUVCRTsiIGN4PSIzMjAiIGN5PSIyMzAiIHI9IjI1Ij48L2NpcmNsZT4gPGNpcmNsZSBpZD0iWE1MSURfNDdfIiBzdHlsZT0iZmlsbDojNDE5RUJFOyIgY3g9IjMwMC43MTEiIGN5PSIxNTkuMjg5IiByPSIyMCI+PC9jaXJjbGU+IDxjaXJjbGUgaWQ9IlhNTElEXzQ2XyIgc3R5bGU9ImZpbGw6IzYyQjNDRDsiIGN4PSIxMzAiIGN5PSIyMzAiIHI9IjIwIj48L2NpcmNsZT4gPGNpcmNsZSBpZD0iWE1MSURfNDVfIiBzdHlsZT0iZmlsbDojNjJCM0NEOyIgY3g9IjE2OS44OTYiIGN5PSIxNjkuODk2IiByPSIzMCI+PC9jaXJjbGU+IDwvZz4gPC9nPjwvc3ZnPg==" class="w-full h-full opacity-90 group-hover:opacity-100 transition-opacity" alt="Microbiome">
+                    </button>
+                </div>
+            </div>
+
+            <div class="p-5 flex-grow space-y-6">
+                <div>
+                    <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">2. 算法选择</h2>
+                    <select id="seg-algo-select" onchange="updateSegAlgo(this.value)" class="w-full bg-slate-800 border border-slate-700 text-sm rounded-md p-2.5 text-white focus:ring-2 focus:ring-cyan-500 outline-none">
+                        <option value="slic">SLIC 超像素 (k-means based)</option>
+                        <option value="graph">图论分割 (Graph-Based)</option>
+                        <option value="watershed">分水岭 (Watershed)</option>
+                        <option value="mmpso">粒子群优化 (MMPSO-S)</option>
+                        <option value="dl">深度学习 (SAM/U-Net)</option>
+                    </select>
+                </div>
+
+                <div id="seg-controls" class="space-y-5">
+                    <!-- 动态生成控件 -->
+                </div>
+
+                <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700">
+                    <h3 class="text-xs font-bold text-cyan-400 mb-1">算法特性:</h3>
+                    <p id="seg-algo-desc" class="text-xs text-slate-400 leading-relaxed">
+                        SLIC 通过限制搜索区域生成紧凑、大小均匀的超像素，是生境分析中最常用的预处理步骤。
+                    </p>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 画布区域 -->
+        <section class="flex-grow bg-slate-950 relative flex items-center justify-center canvas-wrapper overflow-hidden">
+            <canvas id="segCanvas" class="shadow-2xl bg-black rounded border border-slate-800"></canvas>
+            <div class="absolute bottom-4 left-1/2 -translate-x-1/2 bg-slate-900/80 backdrop-blur px-4 py-2 rounded-full border border-slate-700 text-xs text-slate-300">
+                当前模式: Contain (完整显示)
+            </div>
+        </section>
+    </main>
+
+    <!-- 模块 2：无监督聚类实验室 -->
+    <main id="mod-clustering" class="hidden flex-grow flex flex-col lg:flex-row h-[calc(100vh-64px)] overflow-hidden">
+        <aside class="w-full lg:w-80 bg-slate-900 border-r border-slate-800 flex flex-col z-10 p-5 shadow-xl">
+            <div class="mb-6">
+                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">1. 数据分布</h2>
+                <div class="grid grid-cols-3 gap-2">
+                    <button onclick="setClusterData('blobs')" class="clus-data-btn active px-3 py-2 rounded bg-slate-800 border border-slate-700 hover:border-cyan-500 text-xs text-center transition ring-1 ring-cyan-500">Blob (常规)</button>
+                    <button onclick="setClusterData('moons')" class="clus-data-btn px-3 py-2 rounded bg-slate-800 border border-slate-700 hover:border-cyan-500 text-xs text-center transition">Moons (非凸)</button>
+                    <button onclick="setClusterData('circles')" class="clus-data-btn px-3 py-2 rounded bg-slate-800 border border-slate-700 hover:border-cyan-500 text-xs text-center transition">Circles (环形)</button>
+                </div>
+            </div>
+
+            <div class="mb-6">
+                <h2 class="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">2. 聚类算法</h2>
+                <select id="clus-algo-select" onchange="updateClusterAlgo(this.value)" class="w-full bg-slate-800 border border-slate-700 text-sm rounded-md p-2.5 text-white focus:ring-2 focus:ring-cyan-500 outline-none">
+                    <option value="kmeans">K-Means (均值聚类)</option>
+                    <option value="dbscan">DBSCAN (密度聚类)</option>
+                    <option value="spectral">Spectral (谱聚类)</option>
+                    <option value="hierarchical">Hierarchical (层次聚类)</option>
+                </select>
+            </div>
+
+            <div id="clus-controls" class="space-y-5 mb-6">
+                <!-- 动态控件 -->
+            </div>
+
+            <div class="bg-slate-800/50 rounded-lg p-3 border border-slate-700 flex-grow">
+                <h3 class="text-xs font-bold text-green-400 mb-1">适配解析:</h3>
+                <p id="clus-algo-desc" class="text-xs text-slate-400 leading-relaxed"></p>
+            </div>
+        </aside>
+
+        <section class="flex-grow bg-slate-950 relative p-4 canvas-wrapper flex items-center justify-center">
+            <!-- ECharts 容器 -->
+            <div id="echarts-container" class="w-full h-full rounded-lg bg-slate-900/50 border border-slate-800"></div>
+        </section>
+    </main>
+
+    <!-- 模块 3：临床案例仪表盘 -->
+    <main id="mod-clinical" class="hidden flex-grow bg-slate-100 text-slate-800 overflow-y-auto">
+        <div class="max-w-7xl mx-auto px-6 py-10">
+            <header class="mb-10 text-center">
+                <h2 class="text-3xl font-bold text-slate-800">多模态临床生境图谱</h2>
+                <p class="text-slate-500 mt-2">基于真实影像数据的异质性定量分析</p>
+            </header>
+
+            <div class="flex justify-center mb-8 gap-2">
+                <button onclick="loadCase('gbm')" class="case-tab active px-5 py-2 rounded-full text-sm font-bold bg-slate-800 text-white shadow-lg transition-transform hover:scale-105">MRI: 胶质母细胞瘤</button>
+                <button onclick="loadCase('ct')" class="case-tab px-5 py-2 rounded-full text-sm font-medium bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 transition-transform hover:scale-105">CT: 腹部肿瘤</button>
+                <button onclick="loadCase('crc')" class="case-tab px-5 py-2 rounded-full text-sm font-medium bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 transition-transform hover:scale-105">Pathology: 结直肠癌</button>
+                <button onclick="loadCase('micro')" class="case-tab px-5 py-2 rounded-full text-sm font-medium bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 transition-transform hover:scale-105">Microbiome: 菌群</button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- 影像展示区 -->
+                <div class="bg-white rounded-2xl shadow-xl border border-slate-100 overflow-hidden">
+                    <div class="relative h-96 w-full bg-slate-900">
+                        <canvas id="clinicalCanvas" class="w-full h-full object-cover"></canvas>
+                        <div class="absolute top-4 left-4 bg-black/60 backdrop-blur text-white text-xs px-3 py-1 rounded-full border border-white/20">
+                            模式: Cover (裁剪填充)
+                        </div>
+                        <div class="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-6 pt-12 text-white">
+                            <h3 id="case-title" class="text-xl font-bold">案例标题</h3>
+                            <p id="case-subtitle" class="text-sm text-slate-300 font-mono mt-1">算法参数信息</p>
+                        </div>
+                    </div>
+                    <div class="p-6">
+                        <h4 class="font-bold text-slate-800 mb-2">临床解读</h4>
+                        <p id="case-desc" class="text-sm text-slate-600 leading-relaxed">案例描述...</p>
+                    </div>
+                </div>
+
+                <!-- 数据分析区 -->
+                <div class="space-y-6">
+                    <div class="bg-white p-6 rounded-2xl shadow-lg border border-slate-100 h-80">
+                        <h4 class="text-sm font-bold text-slate-500 uppercase tracking-wide mb-4">生境异质性指纹 (Habitat Heterogeneity)</h4>
+                        <div class="h-full pb-6">
+                            <canvas id="fingerprintChart"></canvas>
+                        </div>
+                    </div>
+
+                    <div class="bg-gradient-to-br from-indigo-50 to-blue-50 p-6 rounded-2xl border border-indigo-100">
+                        <div class="flex items-start gap-4">
+                            <div class="bg-indigo-600 text-white p-2 rounded-lg mt-1">
+                                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+                            </div>
+                            <div>
+                                <h4 class="font-bold text-indigo-900 mb-1">AI 辅助诊断建议</h4>
+                                <ul id="case-insight" class="list-disc list-inside text-sm text-indigo-800 space-y-1">
+                                    <li>加载中...</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // ==========================================
+        // 全局管理
+        // ==========================================
+        function switchModule(modId) {
+            // ID Mapping to prevent 'null is not an object' error
+            const navMap = {
+                'segmentation': 'nav-seg',
+                'clustering': 'nav-clus',
+                'clinical': 'nav-clin'
+            };
+
+            ['segmentation', 'clustering', 'clinical'].forEach(m => {
+                const modEl = document.getElementById(`mod-${m}`);
+                if (modEl) modEl.classList.add('hidden');
+                
+                const navId = navMap[m];
+                const navBtn = document.getElementById(navId);
+                if (navBtn) {
+                    navBtn.classList.remove('active', 'text-cyan-400');
+                }
+            });
+
+            const targetMod = document.getElementById(`mod-${modId}`);
+            if (targetMod) targetMod.classList.remove('hidden');
+
+            const targetNav = document.getElementById(navMap[modId]);
+            if (targetNav) targetNav.classList.add('active');
+
+            if (modId === 'segmentation') segApp.resize();
+            if (modId === 'clustering') clusApp.resize();
+            if (modId === 'clinical') clinApp.resize();
+        }
+
+        // ==========================================
+        // 模块 1: 超像素分割实验室 (Canvas Engine)
+        // ==========================================
+        const segApp = {
+            canvas: document.getElementById('segCanvas'),
+            ctx: document.getElementById('segCanvas').getContext('2d'),
+            mode: 'pathology',
+            algo: 'slic',
+            params: { size: 50, factor: 0.5 }, // generic params: size (K/h/threshold), factor (compactness/smoothness)
+            images: {},
+            
+            init() {
+                // 生成SVG图像数据 (模拟外部图片)
+                this.images.pathology = this.createSVGData('pathology');
+                this.images.spatial = this.createSVGData('spatial');
+                this.images.mri = this.createSVGData('mri');
+                this.images.ct = this.createSVGData('ct');
+                this.images.microbiome = this.createSVGData('microbiome');
+                
+                window.addEventListener('resize', () => this.resize());
+                this.updateControls();
+                this.resize();
+            },
+
+            createSVGData(type) {
+                // 使用 SVG 字符串模拟不同模态图像
+                let content = '';
+                let bg = '#000';
+                
+                if (type === 'pathology') {
+                    bg = '#ffeef5'; // H&E background
+                    for(let i=0; i<80; i++) content += `<circle cx="${Math.random()*800}" cy="${Math.random()*600}" r="${5+Math.random()*10}" fill="#c026d3" opacity="0.8"/><circle cx="${Math.random()*800}" cy="${Math.random()*600}" r="${15+Math.random()*10}" fill="#f472b6" opacity="0.4"/>`;
+                } else if (type === 'spatial') {
+                    bg = '#0f172a';
+                    for(let y=0; y<600; y+=30) for(let x=0; x<800; x+=30) content += `<circle cx="${x}" cy="${y}" r="10" fill="${['#10b981', '#3b82f6', '#f59e0b'][Math.floor(Math.random()*3)]}" opacity="${Math.random()}"/>`;
+                } else if (type === 'mri') {
+                    bg = '#000';
+                    content = `<ellipse cx="400" cy="300" rx="150" ry="200" fill="#334155"/><ellipse cx="400" cy="300" rx="120" ry="160" fill="#475569"/><path d="M380,250 Q400,350 420,250" stroke="#0f172a" stroke-width="10" fill="none"/><circle cx="450" cy="250" r="30" fill="#94a3b8" filter="blur(5px)"/>`; // Tumor
+                } else if (type === 'ct') {
+                    bg = '#000'; // Chest CT style
+                    content = `<rect x="200" y="100" width="400" height="400" rx="50" fill="#334155"/><circle cx="300" cy="300" r="80" fill="#0f172a"/><circle cx="500" cy="300" r="80" fill="#0f172a"/><path d="M400,150 L400,450" stroke="#cbd5e1" stroke-width="20" opacity="0.5"/>`;
+                } else if (type === 'microbiome') {
+                    bg = '#1e293b';
+                    for(let i=0; i<100; i++) content += `<rect x="${Math.random()*800}" y="${Math.random()*600}" width="20" height="8" rx="4" fill="${Math.random()>0.5?'#facc15':'#4ade80'}" transform="rotate(${Math.random()*360} ${Math.random()*800} ${Math.random()*600})"/>`;
+                }
+
+                const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600"><rect width="100%" height="100%" fill="${bg}"/>${content}</svg>`;
+                const img = new Image();
+                img.src = 'data:image/svg+xml;base64,' + btoa(svg);
+                return img;
+            },
+
+            resize() {
+                const container = this.canvas.parentElement;
+                this.canvas.width = container.clientWidth;
+                this.canvas.height = container.clientHeight;
+                this.draw();
+            },
+
+            drawContain(img) {
+                const cw = this.canvas.width;
+                const ch = this.canvas.height;
+                const scale = Math.min(cw / img.width, ch / img.height) * 0.9; // 0.9 padding
+                const nw = img.width * scale;
+                const nh = img.height * scale;
+                const dx = (cw - nw) / 2;
+                const dy = (ch - nh) / 2;
+                
+                this.ctx.drawImage(img, dx, dy, nw, nh);
+                return { dx, dy, nw, nh };
+            },
+
+            draw() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                const img = this.images[this.mode];
+                if (!img.complete) {
+                    img.onload = () => this.draw();
+                    return;
+                }
+                
+                // 1. 绘制图像 (Contain Mode)
+                const rect = this.drawContain(img);
+
+                // 2. 绘制算法特效 Overlay
+                this.drawAlgoOverlay(rect);
+            },
+
+            drawAlgoOverlay(rect) {
+                const { dx, dy, nw, nh } = rect;
+                const ctx = this.ctx;
+                const p1 = this.params.size; // Main scale parameter
+                const p2 = this.params.factor; // Main behavior parameter
+
+                ctx.save();
+                ctx.beginPath();
+                ctx.rect(dx, dy, nw, nh);
+                ctx.clip(); // 限制特效在图片区域内
+
+                if (this.algo === 'slic') {
+                    // SLIC: 绘制变形网格
+                    const step = Math.max(10, 100 - p1); // 颗粒度
+                    const irregularity = p2 * 10; // 规则度
+                    ctx.strokeStyle = 'rgba(250, 204, 21, 0.8)'; // Yellow
+                    ctx.lineWidth = 1;
+                    
+                    for (let x = dx; x <= dx + nw; x += step) {
+                        ctx.beginPath();
+                        for (let y = dy; y <= dy + nh; y += 10) {
+                            const offset = Math.sin(y * 0.05) * irregularity;
+                            ctx.lineTo(x + offset, y);
+                        }
+                        ctx.stroke();
+                    }
+                    for (let y = dy; y <= dy + nh; y += step) {
+                        ctx.beginPath();
+                        for (let x = dx; x <= dx + nw; x += 10) {
+                            const offset = Math.cos(x * 0.05) * irregularity;
+                            ctx.lineTo(x, y + offset);
+                        }
+                        ctx.stroke();
+                    }
+
+                } else if (this.algo === 'graph') {
+                    // Graph: 区域合并模拟 (随机色块合并)
+                    const blockSize = Math.max(5, p1 / 2);
+                    const threshold = p2; // 0-1
+                    ctx.globalCompositeOperation = 'overlay';
+                    for (let i = 0; i < 50; i++) {
+                        if (Math.random() > threshold) continue;
+                        ctx.fillStyle = `hsla(${Math.random()*360}, 70%, 50%, 0.3)`;
+                        const cx = dx + Math.random() * nw;
+                        const cy = dy + Math.random() * nh;
+                        ctx.beginPath();
+                        // 模拟不规则图块
+                        ctx.moveTo(cx, cy);
+                        ctx.lineTo(cx + blockSize, cy + blockSize*0.5);
+                        ctx.lineTo(cx + blockSize*0.2, cy + blockSize);
+                        ctx.lineTo(cx - blockSize*0.5, cy + blockSize*0.8);
+                        ctx.fill();
+                        ctx.strokeStyle = 'white';
+                        ctx.lineWidth = 0.5;
+                        ctx.stroke();
+                    }
+
+                } else if (this.algo === 'watershed') {
+                    // Watershed: 模拟注水梯度
+                    const levels = Math.floor(p1 / 10);
+                    ctx.globalCompositeOperation = 'source-over';
+                    ctx.strokeStyle = 'rgba(56, 189, 248, 0.5)'; // Blue water
+                    
+                    // 模拟等高线
+                    for(let i=0; i<levels; i++) {
+                        ctx.beginPath();
+                        const r = (i+1) * (nw/2/levels);
+                        ctx.ellipse(dx + nw/2, dy + nh/2, r, r*0.8, 0, 0, Math.PI*2);
+                        ctx.stroke();
+                    }
+                    // Markers
+                    if (p2 > 0.5) {
+                        ctx.fillStyle = 'red';
+                        ctx.beginPath(); ctx.arc(dx+nw*0.3, dy+nh*0.3, 5, 0, Math.PI*2); ctx.fill();
+                        ctx.beginPath(); ctx.arc(dx+nw*0.7, dy+nh*0.7, 5, 0, Math.PI*2); ctx.fill();
+                    }
+
+                } else if (this.algo === 'mmpso') {
+                    // MMPSO: 粒子群点
+                    const particleCount = p1 * 2;
+                    ctx.fillStyle = '#f472b6'; // Pink particles
+                    for(let i=0; i<particleCount; i++) {
+                        const px = dx + ((i * 137.5) % nw); // Golden angle distribution mock
+                        const py = dy + ((i * 200) % nh);
+                        ctx.beginPath(); ctx.arc(px, py, 2, 0, Math.PI*2); ctx.fill();
+                        
+                        // 惯性权重模拟 - 轨迹线
+                        if (p2 > 0.5) {
+                            ctx.strokeStyle = 'rgba(244, 114, 182, 0.3)';
+                            ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px+10, py+5); ctx.stroke();
+                        }
+                    }
+
+                } else if (this.algo === 'dl') {
+                    // Deep Learning: Heatmap/Mask confidence
+                    const resolution = Math.floor(p1 / 5); // Patch size
+                    const confidence = p2;
+                    ctx.globalCompositeOperation = 'screen';
+                    const cols = Math.ceil(nw / resolution);
+                    const rows = Math.ceil(nh / resolution);
+                    
+                    for(let r=0; r<rows; r++) {
+                        for(let c=0; c<cols; c++) {
+                            // 模拟边缘检测热力图
+                            if (Math.random() > 0.8) {
+                                ctx.fillStyle = `rgba(16, 185, 129, ${confidence * 0.6})`;
+                                ctx.fillRect(dx + c*resolution, dy + r*resolution, resolution, resolution);
+                            }
+                        }
+                    }
+                }
+
+                ctx.restore();
+            },
+
+            updateControls() {
+                const container = document.getElementById('seg-controls');
+                const desc = document.getElementById('seg-algo-desc');
+                container.innerHTML = '';
+                
+                // 统一生成两个核心滑块，根据算法改名
+                let p1Name = "数量 / 尺度", p1Min = 10, p1Max = 100;
+                let p2Name = "辅助参数", p2Min = 0, p2Max = 100, p2Step = 1;
+                let text = "";
+
+                if (this.algo === 'slic') {
+                    p1Name = "超像素数量 (K)"; p1Min = 20; p1Max = 200;
+                    p2Name = "紧凑度 (Compactness)";
+                    text = "SLIC通过K-means在5D空间（Lab颜色+XY坐标）聚类。Compactness控制形状规则度：值越大超像素越接近正方形，值越小越贴合纹理边界。";
+                } else if (this.algo === 'graph') {
+                    p1Name = "最小组件尺寸 (Min Size)";
+                    p2Name = "合并阈值 (k)"; p2Max = 1; p2Step = 0.1;
+                    text = "图论分割将图像视为加权图。阈值k决定了两个区域是否合并，Min Size用于过滤细碎的噪点区域，适合纹理复杂的病理图像。";
+                } else if (this.algo === 'watershed') {
+                    p1Name = "梯度阈值 (h)";
+                    p2Name = "标记强度 (Marker)"; p2Max = 1; p2Step = 0.1;
+                    text = "分水岭算法模拟水流漫过地形。'标记控制'通过预定义前景/背景种子点（Marker），有效解决了传统分水岭的过分割问题。";
+                } else if (this.algo === 'mmpso') {
+                    p1Name = "粒子群规模 (N)";
+                    p2Name = "惯性权重 (w)"; p2Max = 1; p2Step = 0.1;
+                    text = "多目标粒子群优化（MMPSO）通过模拟鸟群觅食寻找最优分割阈值。惯性权重平衡了全局搜索与局部开发能力。";
+                } else if (this.algo === 'dl') {
+                    p1Name = "Patch Size (分辨率)";
+                    p2Name = "置信度阈值"; p2Max = 1; p2Step = 0.1;
+                    text = "深度学习模型（如SAM/U-Net）通过学习大量标注数据，能理解语义信息。Patch Size影响处理粒度，置信度阈值过滤低概率边界。";
+                }
+
+                container.innerHTML = `
+                    <div>
+                        <div class="flex justify-between mb-1"><label class="text-xs font-bold text-slate-300">${p1Name}</label><span class="text-xs text-cyan-400" id="lbl-p1">${this.params.size}</span></div>
+                        <input type="range" min="${p1Min}" max="${p1Max}" value="${this.params.size}" oninput="segApp.setParam('size', this.value, 'lbl-p1')">
+                    </div>
+                    <div>
+                        <div class="flex justify-between mb-1"><label class="text-xs font-bold text-slate-300">${p2Name}</label><span class="text-xs text-cyan-400" id="lbl-p2">${this.params.factor}</span></div>
+                        <input type="range" min="${p2Min}" max="${p2Max}" step="${p2Step}" value="${this.params.factor}" oninput="segApp.setParam('factor', this.value, 'lbl-p2')">
+                    </div>
+                `;
+                desc.textContent = text;
+            },
+
+            setParam(key, val, lblId) {
+                this.params[key] = parseFloat(val);
+                document.getElementById(lblId).textContent = val;
+                this.draw();
+            }
+        };
+
+        // 全局绑定
+        window.setSegImage = (type) => { segApp.mode = type; segApp.draw(); 
+            document.querySelectorAll('.img-btn').forEach(b => b.classList.remove('ring-2', 'ring-pink-500', 'ring-green-500', 'ring-indigo-500', 'ring-blue-500', 'ring-yellow-500', 'active'));
+            event.currentTarget.classList.add('active', `ring-${['pink','green','indigo','blue','yellow'][['pathology','spatial','mri','ct','microbiome'].indexOf(type)]}-500`);
+        };
+        window.updateSegAlgo = (val) => { segApp.algo = val; segApp.updateControls(); segApp.draw(); };
+
+
+        // ==========================================
+        // 模块 2: 无监督聚类实验室 (ECharts)
+        // ==========================================
+        const clusApp = {
+            chart: null,
+            dataMode: 'blobs', // blobs, moons, circles
+            algo: 'kmeans',
+            params: { p1: 3, p2: 0.5 }, // generic params
+            
+            init() {
+                this.chart = echarts.init(document.getElementById('echarts-container'), 'dark', { renderer: 'canvas', backgroundColor: 'transparent' });
+                window.addEventListener('resize', () => this.resize());
+                this.updateControls();
+                this.run();
+            },
+
+            resize() { this.chart && this.chart.resize(); },
+
+            generateData() {
+                const data = [];
+                const noiseCount = 30;
+                
+                if (this.dataMode === 'blobs') {
+                    // 3个高斯分布团
+                    const centers = [[2,2], [6,6], [2,7]];
+                    centers.forEach((c, idx) => {
+                        for(let i=0; i<80; i++) data.push([c[0]+randn()*0.8, c[1]+randn()*0.8]);
+                    });
+                } else if (this.dataMode === 'moons') {
+                    // 双月牙
+                    for(let i=0; i<100; i++) {
+                        const a = i/100 * Math.PI;
+                        data.push([Math.cos(a)*5 + randn()*0.2, Math.sin(a)*5 + randn()*0.2]);
+                        data.push([1 + Math.cos(a)*5 + randn()*0.2, 3 - Math.sin(a)*5 + randn()*0.2]);
+                    }
+                } else if (this.dataMode === 'circles') {
+                    // 同心圆
+                    for(let i=0; i<200; i++) {
+                        const r = i < 100 ? 3 : 8;
+                        const a = Math.random() * Math.PI * 2;
+                        data.push([Math.cos(a)*r + randn()*0.2, Math.sin(a)*r + randn()*0.2]);
+                    }
+                }
+                
+                // 添加噪声 (10%)
+                for(let i=0; i<noiseCount; i++) data.push([Math.random()*10 - 2, Math.random()*10 - 2]);
+                
+                return data;
+            },
+
+            simulateAlgo(data) {
+                // 简化版算法模拟，仅生成标签用于着色
+                const labels = new Array(data.length).fill(0);
+                const p1 = this.params.p1; // k or epsilon
+                
+                if (this.algo === 'kmeans') {
+                    // 简单的空间划分模拟 K-Means
+                    // 真实 K-means 需要迭代，这里为了演示直接根据位置哈希或简单几何划分
+                    if (this.dataMode === 'blobs') {
+                        // 既然是演示，我们在 Blobs 上让它表现好，在 Moons 上表现差
+                        const centroids = [[2,2], [6,6], [2,7], [5,2], [8,8]].slice(0, p1);
+                        data.forEach((pt, i) => {
+                            let minDist = Infinity, label = 0;
+                            centroids.forEach((c, ci) => {
+                                const d = Math.hypot(pt[0]-c[0], pt[1]-c[1]);
+                                if(d < minDist) { minDist = d; label = ci; }
+                            });
+                            labels[i] = label;
+                        });
+                    } else {
+                        // Moons/Circles 上 K-Means 只是简单线性划分，效果差
+                        data.forEach((pt, i) => {
+                            labels[i] = Math.floor((pt[0] + 5) / (15/p1)); // 简单的X轴切分模拟失败
+                        });
+                    }
+                } else if (this.algo === 'dbscan') {
+                    // 模拟密度聚类：基于距离连接
+                    // 使用真实逻辑太慢，这里用预设的"真值" + 噪声识别模拟
+                    const eps = p1 / 10; // map 1-10 to 0.1-1.0
+                    // 简单模拟: 只有当点在密集结构上时才归类，否则为噪声(-1)
+                    data.forEach((pt, i) => {
+                        // 恢复一下数据结构的逻辑（Hardcoded visual simulation）
+                        let isStructure = false;
+                        if (this.dataMode === 'circles') {
+                            const d = Math.hypot(pt[0], pt[1]);
+                            if (Math.abs(d-3)<0.5 || Math.abs(d-8)<0.5) isStructure = true;
+                        } else if (this.dataMode === 'moons') {
+                            // 简化判断
+                            if (pt[1] > -3 && pt[1] < 8) isStructure = true; 
+                        } else {
+                            isStructure = true;
+                        }
+
+                        // 噪声识别: 如果是后来加的噪声点(最后30个)
+                        if (i >= data.length - 30) {
+                             // DBSCAN 能识别噪声，如果 epsilon 小
+                             labels[i] = (eps < 0.5) ? -1 : 0; 
+                        } else {
+                             labels[i] = isStructure ? 0 : -1;
+                             // 如果是 circles，区分内外圈
+                             if(this.dataMode === 'circles') labels[i] = Math.hypot(pt[0], pt[1]) < 5 ? 1 : 2;
+                        }
+                    });
+                }
+                
+                return labels;
+            },
+
+            run() {
+                const data = this.generateData();
+                const labels = this.simulateAlgo(data);
+                
+                // Map labels to colors
+                const colors = ['#f87171', '#60a5fa', '#4ade80', '#fbbf24', '#a78bfa'];
+                const plotData = data.map((pt, i) => {
+                    const l = labels[i];
+                    return {
+                        value: pt,
+                        itemStyle: { color: l === -1 ? '#333' : colors[l % colors.length] } // -1 is noise (black)
+                    };
+                });
+
+                const option = {
+                    xAxis: { show: false, min: -3, max: 12 },
+                    yAxis: { show: false, min: -3, max: 12 },
+                    grid: { top: 10, bottom: 10, left: 10, right: 10 },
+                    series: [{
+                        type: 'scatter',
+                        symbolSize: 8,
+                        data: plotData,
+                        animationDuration: 1000
+                    }]
+                };
+                this.chart.setOption(option);
+            },
+
+            updateControls() {
+                const container = document.getElementById('clus-controls');
+                const desc = document.getElementById('clus-algo-desc');
+                container.innerHTML = '';
+                
+                let p1Name = "参数", p1Min = 1, p1Max = 10, val = this.params.p1;
+                let text = "";
+
+                if (this.algo === 'kmeans') {
+                    p1Name = "簇数量 (K)"; p1Max = 6;
+                    text = "K-Means假设簇是凸的（球状）。在'Moons'或'Circles'等非凸数据上，它试图通过线性边界划分，往往导致错误的聚类结果。适合'Blobs'数据。";
+                } else if (this.algo === 'dbscan') {
+                    p1Name = "邻域半径 (Epsilon)"; p1Max = 10;
+                    text = "DBSCAN基于密度。它能自动发现任意形状的簇（如Moons/Circles），并将低密度区域的点标记为噪声（黑色点）。非常适合处理含噪的生物医学数据。";
+                } else if (this.algo === 'spectral') {
+                    p1Name = "相似度 Sigma";
+                    text = "谱聚类利用数据的相似性矩阵特征值。它关注数据的连接性而非绝对位置，因此也能很好地处理非凸形状，但计算复杂度较高。";
+                }
+
+                container.innerHTML = `
+                    <div>
+                        <div class="flex justify-between mb-1"><label class="text-xs font-bold text-slate-300">${p1Name}</label><span class="text-xs text-cyan-400" id="lbl-cp1">${val}</span></div>
+                        <input type="range" min="${p1Min}" max="${p1Max}" value="${val}" oninput="clusApp.setParam('p1', this.value, 'lbl-cp1')">
+                    </div>
+                `;
+                desc.textContent = text;
+            },
+            
+            setParam(key, val, lblId) {
+                this.params[key] = parseFloat(val);
+                document.getElementById(lblId).textContent = val;
+                this.run();
+            }
+        };
+
+        function randn() {
+            let u = 0, v = 0;
+            while(u === 0) u = Math.random();
+            while(v === 0) v = Math.random();
+            return Math.sqrt( -2.0 * Math.log( u ) ) * Math.cos( 2.0 * Math.PI * v );
+        }
+
+        window.setClusterData = (d) => { clusApp.dataMode = d; clusApp.run(); 
+            document.querySelectorAll('.clus-data-btn').forEach(b => b.classList.remove('active', 'ring-1', 'ring-cyan-500'));
+            event.currentTarget.classList.add('active', 'ring-1', 'ring-cyan-500');
+        };
+        window.updateClusterAlgo = (v) => { clusApp.algo = v; clusApp.updateControls(); clusApp.run(); };
+
+
+        // ==========================================
+        // 模块 3: 临床案例仪表盘 (Cover Mode Canvas)
+        // ==========================================
+        const clinApp = {
+            canvas: document.getElementById('clinicalCanvas'),
+            ctx: document.getElementById('clinicalCanvas').getContext('2d'),
+            chart: null,
+            caseId: 'gbm',
+            
+            cases: {
+                gbm: {
+                    title: "胶质母细胞瘤 (GBM)",
+                    sub: "T1Gd + T2-FLAIR MRI | 算法: K-Means (k=4)",
+                    imgUrl: "https://www.researchgate.net/profile/Natarajan-Raghunand/publication/335328340/figure/fig2/AS:794775510867968@1566500656460/Habitat-6-high-enhancement-and-high-FLAIR-on-preoperative-MRI-comprises-23-of-the.jpg",
+                    desc: "识别出坏死核心（红色）、活性强化区（黄色）及瘤周水肿（绿色）。水肿区的高异质性与复发风险相关。",
+                    insight: ["建议扩大放疗靶区 (CTV)", "检测到高度缺氧生境", "预后风险等级: 高"],
+                    chartData: [25, 35, 30, 10],
+                    labels: ['坏死', '强化', '水肿', '囊变']
+                },
+                ct: {
+                    title: "腹部肿瘤 (Abdominal CT)",
+                    sub: "Contrast-enhanced CT | 算法: Watershed + Texture Analysis",
+                    imgUrl: "https://media.springernature.com/lw685/springer-static/image/art%3A10.1186%2Fs13244-021-01082-7/MediaObjects/13244_2021_1082_Fig7_HTML.jpg",
+                    desc: "生境分析揭示了肿瘤内部的血流灌注差异。低密度区（蓝色）对应低灌注坏死，边缘高密度区（红色）对应活跃增殖。",
+                    insight: ["肿瘤异质性指数 (HI) > 0.4", "提示对化疗药物渗透性不均", "建议结合PET代谢分析"],
+                    chartData: [40, 20, 30, 10],
+                    labels: ['低灌注', '高灌注', '混合区', '钙化']
+                },
+                crc: {
+                    title: "结直肠癌 (H&E Pathology)",
+                    sub: "WSI Whole Slide Image | 算法: Deep Learning (U-Net)",
+                    imgUrl: "https://pub.mdpi-res.com/cancers/cancers-11-01700/article_deploy/html/images/cancers-11-01700-g003.png",
+                    desc: "区分肿瘤上皮（紫色）、基质（粉色）和免疫细胞浸润（点状）。高基质比（TSR）通常预示预后较差。",
+                    insight: ["TSR 比率为 60:40 (High Stroma)", "免疫沙漠型 (Immune Desert)", "建议MSI检测"],
+                    chartData: [30, 50, 15, 5],
+                    labels: ['肿瘤', '基质', '免疫', '坏死']
+                },
+                micro: {
+                    title: "菌群生态 (Microbiome FISH)",
+                    sub: "Fluorescence In Situ Hybridization | 算法: Spectral Clustering",
+                    imgUrl: "https://news.cornell.edu/sites/default/files/styles/full_size/public/2020-11/1123_biofilm.jpg",
+                    desc: "可视化肠道粘膜表面的生物膜结构。不同颜色代表不同的菌群共生网络，入侵性生物膜（红色）与炎症相关。",
+                    insight: ["检测到致病菌生物膜", "多样性 Shannon 指数下降", "粘膜屏障受损预警"],
+                    chartData: [20, 40, 30, 10],
+                    labels: ['拟杆菌', '厚壁菌', '变形菌', '其他']
+                }
+            },
+
+            resize() {
+                const p = this.canvas.parentElement;
+                this.canvas.width = p.clientWidth;
+                this.canvas.height = p.clientHeight;
+                this.loadAndDraw(this.cases[this.caseId].imgUrl);
+            },
+
+            drawCover(img) {
+                const cw = this.canvas.width;
+                const ch = this.canvas.height;
+                const scale = Math.max(cw / img.width, ch / img.height);
+                const nw = img.width * scale;
+                const nh = img.height * scale;
+                const dx = (cw - nw) / 2;
+                const dy = (ch - nh) / 2;
+                this.ctx.drawImage(img, dx, dy, nw, nh);
+            },
+
+            loadAndDraw(url) {
+                const img = new Image();
+                // Remove crossOrigin to ensure image displays even if server doesn't support CORS (Canvas will be tainted, but visible)
+                // img.crossOrigin = "Anonymous"; 
+                img.src = url;
+                img.onload = () => {
+                    this.drawCover(img);
+                };
+            },
+
+            updateUI() {
+                const data = this.cases[this.caseId];
+                document.getElementById('case-title').textContent = data.title;
+                document.getElementById('case-subtitle').textContent = data.sub;
+                document.getElementById('case-desc').textContent = data.desc;
+                document.getElementById('case-insight').innerHTML = data.insight.map(i => `<li>${i}</li>`).join('');
+                
+                // Update Chart
+                if (this.chart) this.chart.destroy();
+                this.chart = new Chart(document.getElementById('fingerprintChart'), {
+                    type: 'bar',
+                    data: {
+                        labels: data.labels,
+                        datasets: [{
+                            label: '生境比例 %',
+                            data: data.chartData,
+                            backgroundColor: ['#f87171', '#fbbf24', '#4ade80', '#60a5fa'],
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { display: false } },
+                        scales: { y: { beginAtZero: true, grid: { color: '#f1f5f9' } }, x: { grid: { display: false } } }
+                    }
+                });
+                
+                this.loadAndDraw(data.imgUrl);
+            }
+        };
+
+        window.loadCase = (id) => { 
+            clinApp.caseId = id; 
+            clinApp.updateUI();
+            document.querySelectorAll('.case-tab').forEach(b => {
+                b.classList.remove('active', 'bg-slate-800', 'text-white', 'shadow-lg');
+                b.classList.add('bg-white', 'text-slate-600');
+            });
+            event.currentTarget.classList.remove('bg-white', 'text-slate-600');
+            event.currentTarget.classList.add('active', 'bg-slate-800', 'text-white', 'shadow-lg');
+        };
+
+        // ==========================================
+        // 初始化
+        // ==========================================
+        window.addEventListener('DOMContentLoaded', () => {
+            segApp.init();
+            clusApp.init();
+            // Start in Seg mode
+            switchModule('segmentation');
+            // Preload clinical initial state
+            clinApp.resize();
+            clinApp.updateUI();
+        });
+
+    </script>
+</body>
+</html>
